@@ -1,0 +1,28 @@
+# Template file for 'lms'
+pkgname=filebrowser
+version=2.23.0
+revision=1
+build_style=go
+conf_files="/etc/filebrowser.json"
+short_desc="Web File Browser"
+maintainer="danoloan10 <danoloan10@tutanota.com>"
+license="Apache-2.0"
+homepage="https://github.com/filebroser/filebrowser"
+distfiles="https://github.com/filebrowser/filebrowser/archive/refs/tags/v${version}.tar.gz "
+checksum=276ae24337292dd0893014ff84485697c476bd6322f09c12a07b613885d6cfad
+
+system_accounts="_filebrowser"
+_lms_homedir="/var/lib/filebrowser"
+make_dirs="/var/lib/filebrowser 755 _filebrowser"
+
+if [ "$XBPS_TARGET_NO_ATOMIC8" ]; then
+	makedepends+=" libatomic-devel"
+	configure_args+=" -DCMAKE_CXX_FLAGS=-latomic"
+fi
+
+post_install() {
+	vconf conf/lms.conf
+	vmkdir /etc/pam.d
+	vcopy conf/pam/* /etc/pam.d
+	vsv lms
+}
