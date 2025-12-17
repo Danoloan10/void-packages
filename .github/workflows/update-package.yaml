@@ -1,0 +1,197 @@
+name: Update Package
+
+# Reusable workflow for updating packages from GitHub releases
+
+on:
+  workflow_call:
+    inputs:
+      package:
+        description: 'Package name (e.g., lms, wt)'
+        required: true
+        type: string
+      owner:
+        description: 'GitHub repository owner'
+        required: true
+        type: string
+      repo:
+        description: 'GitHub repository name'
+        required: true
+        type: string
+      version:
+        description: 'Version to update to (optional override)'
+        required: false
+        type: string
+
+jobs:
+  check-release:
+    name: Check for new ${{ inputs.package }} release
+    runs-on: ubuntu-latest
+    outputs:
+      new_version: ${{ steps.check.outputs.new_version }}
+      current_version: ${{ steps.check.outputs.current_version }}
+      update_needed: ${{ steps.check.outputs.update_needed }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6.0.1
+
+      - name: Get latest release
+        id: latest_release
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { data: release } = await github.rest.repos.getLatestRelease({
+              owner: '${{ inputs.owner }}',
+              repo: '${{ inputs.repo }}'
+            });
+            const version = release.tag_name.replace(/^v/, '');
+            core.setOutput('version', version);
+            console.log(`Latest release: ${version}`);
+            return version;
+
+      - name: Compare versions
+        id: check
+        run: |
+          CURRENT=$(grep '^version=' srcpkgs/${{ inputs.package }}/template | cut -d= -f2)
+          NEW="${{ inputs.version || steps.latest_release.outputs.version }}"
+
+          echo "current_version=$CURRENT" >> $GITHUB_OUTPUT
+          echo "new_version=$NEW" >> $GITHUB_OUTPUT
+
+          if [ "$CURRENT" != "$NEW" ]; then
+            echo "update_needed=true" >> $GITHUB_OUTPUT
+            echo "Update: $CURRENT → $NEW"
+          else
+            echo "update_needed=false" >> $GITHUB_OUTPUT
+            echo "Already at $CURRENT"
+          fi
+
+  update-package:
+    name: Update ${{ inputs.package }} package
+    needs: check-release
+    if: needs.check-release.outputs.update_needed == 'true'
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/void-linux/void-glibc-full:20250616R1
+
+    steps:
+      - name: Prepare container
+        run: |
+          mkdir -p /etc/xbps.d
+          cp /usr/share/xbps.d/*-repository-*.conf /etc/xbps.d/
+          sed -i 's|repo-default|repo-ci|g' /etc/xbps.d/*-repository-*.conf
+          xbps-install -Syu xbps
+          xbps-install -yu
+          xbps-install -y git xtools
+
+          # Workaround https://github.com/actions/runner-images/issues/6775
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+          # Build user (matching actions/runner)
+          useradd --uid 1001 runner
+
+      - name: Checkout repository
+        uses: actions/checkout@v6.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Setup upstream and create branch
+        run: |
+          VERSION="${{ needs.check-release.outputs.new_version }}"
+          BRANCH="update-${{ inputs.package }}-${VERSION}"
+
+          # Add upstream remote if not exists
+          git remote add up https://github.com/void-linux/void-packages.git 2>/dev/null || true
+
+          # Fetch upstream master
+          git fetch up master
+
+          # Create new branch from upstream master
+          git checkout -b "$BRANCH" up/master
+
+          # Ensure ownership
+          chown runner -R .
+
+      - name: Update version and generate checksum
+        run: |
+          set -x
+
+          VERSION="${{ needs.check-release.outputs.new_version }}"
+
+          # Update template
+          sed -i "s/^version=.*/version=${VERSION}/" srcpkgs/${{ inputs.package }}/template
+          sed -i "s/^revision=.*/revision=1/" srcpkgs/${{ inputs.package }}/template
+
+          # Update checksum
+          su -c 'xgensum -i ${{ inputs.package }}' runner
+
+      - name: Commit and push
+        run: |
+          VERSION="${{ needs.check-release.outputs.new_version }}"
+          BRANCH="update-${{ inputs.package }}-${VERSION}"
+
+          git config user.email "danolo@danoloan.es"
+          git config user.name "Danoloan10"
+          git add srcpkgs/${{ inputs.package }}/template
+          git commit -m "${{ inputs.package }}: update to ${VERSION}"
+          git push -f origin "$BRANCH"
+
+  build-test:
+    name: Test build for ${{ matrix.arch }}
+    needs: [check-release, update-package]
+    if: needs.check-release.outputs.update_needed == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [x86_64, x86_64-musl, aarch64]
+      fail-fast: false
+
+    container:
+      image: ghcr.io/void-linux/void-${{ matrix.arch == 'x86_64-musl' && 'musl' || matrix.arch == 'aarch64' && 'aarch64' || 'glibc' }}-full:20250616R1
+      options: --platform linux/${{ matrix.arch == 'aarch64' && 'arm64' || 'amd64' }} --user 1001
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@6.0.1
+        with:
+          ref: update-${{ inputs.package }}-${{ needs.check-release.outputs.new_version }}
+
+      - name: Build package
+        run: |
+          ./xbps-src binary-bootstrap
+          ./xbps-src pkg ${{ inputs.package }}
+
+      - name: Verify build
+        run: |
+          PKG="hostdir/binpkgs/${{ inputs.package }}-${{ needs.check-release.outputs.new_version }}_*.xbps"
+          ls -lh $PKG && echo "Successfully built for ${{ matrix.arch }}" || exit 1
+
+# create-pr:
+#   name: Create Pull Request
+#   needs: [check-release, update-package, build-test]
+#   if: needs.check-release.outputs.update_needed == 'true'
+#   runs-on: ubuntu-latest
+#
+#   steps:
+#     - name: Checkout repository
+#       uses: actions/checkout@6.0.1
+#       with:
+#         ref: update-${{ inputs.package }}-${{ needs.check-release.outputs.new_version }}
+#
+#     - name: Create Pull Request
+#       uses: peter-evans/create-pull-request@v5
+#       with:
+#         token: ${{ secrets.GITHUB_TOKEN }}
+#         branch: update-${{ inputs.package }}-${{ needs.check-release.outputs.new_version }}
+#         title: '${{ inputs.package }}: update to ${{ needs.check-release.outputs.new_version }}'
+#         body: |
+#           #### Testing the changes
+#           - I tested the changes in this PR: **YES**
+#
+#           #### Local build testing
+#           - I built this PR locally for my native architecture: x86_64-glibc
+#           - I built this PR locally for these architectures (if supported. mark crossbuilds):
+#             - x86_64-musl
+#             - aarch64
+#         draft: false

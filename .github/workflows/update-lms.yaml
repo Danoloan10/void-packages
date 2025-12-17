@@ -1,0 +1,19 @@
+name: Update LMS
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to update to (e.g., 3.70.0)'
+        type: string
+  schedule:
+    - cron: '0 */6 * * *'
+
+jobs:
+  update:
+    uses: ./.github/workflows/update-package.yaml
+    with:
+      package: lms
+      owner: epoupon
+      repo: lms
+      version: ${{ inputs.version }}
