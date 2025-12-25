@@ -1,0 +1,10 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 461b0dd..ef60e9f 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -143 +142,0 @@ endif()
+-set(SYSTEMD_UNITDIR /lib/systemd/system CACHE PATH "Path to systemd unit files")
+@@ -150,3 +148,0 @@ install(FILES etc/laminarc-completion.zsh DESTINATION ${ZSH_COMPLETIONS_DIR} REN
+-
+-configure_file(etc/laminar.service.in laminar.service @ONLY)
+-install(FILES ${CMAKE_CURRENT_BINARY_DIR}/laminar.service DESTINATION ${SYSTEMD_UNITDIR})

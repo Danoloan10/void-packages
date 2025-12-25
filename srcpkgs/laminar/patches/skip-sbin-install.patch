@@ -1,0 +1,6 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 26000da..461b0dd 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -146 +145,0 @@ set(ZSH_COMPLETIONS_DIR /usr/share/zsh/site-functions CACHE PATH "Path to zsh co
+-install(TARGETS laminard RUNTIME DESTINATION sbin)
