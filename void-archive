@@ -1,0 +1,2342 @@
+#!/usr/bin/env bash
+# void-archive — Archivo incremental de las fuentes de los paquetes void
+# instalados, mediante mirrors (pull) en una instancia de Gitea.
+#
+# Subcomandos:
+#   list     Lista los paquetes fuente instalados y sus URLs
+#            (TSV + URLs únicas + repos git canónicos + informe "sin repo git")
+#   mirror   Crea un mirror individual a partir de una URL dada
+#   archive  Crea (incrementalmente) los mirrors que falten de las fuentes
+#            de los paquetes instalados
+#   status   Muestra el estado: existentes / pendientes / fallidos
+#   help     Ayuda general o de un subcomando: void-archive help <cmd>
+#
+# Logging: los mensajes van a stderr con "[NIVEL]" y timestamp UTC.
+#   Nivel por defecto: info. -v/--verbose = debug, -q/--quiet = warn,
+#   --log-level=debug|info|warn|error, o LOG_LEVEL en entorno/fichero.
+#
+# Configuración: variables de entorno (o fichero OPCIONAL
+# ~/.config/void-archive/config, KEY=VALUE). El entorno tiene prioridad sobre
+# el fichero; no hace falta ningún fichero para usar el script:
+#     GITEA_URL       URL base de Gitea      (defecto: https://git.danoloan.es)
+#     GITEA_TOKEN     token de API (preferido)
+#     GITEA_USER/PASS alternativa al token (basic auth)
+#     UPSTREAM_USER / UPSTREAM_TOKEN|PASS   solo para mirror de repos privados
+#     ARCHIVE_OWNER   owner destino por defecto (usuario u org del token)
+#     ARCHIVE_INTERVAL, ARCHIVE_MAX, ARCHIVE_PRIVATE, ARCHIVE_HOSTS
+#     VOIDPKGS        raíz del clon de void-packages
+#     PKGDB           ruta de la pkgdb de XBPS
+#     STATE_DIR       directorio de estado (defecto: ~/.local/state/void-archive)
+#     LOG_LEVEL       debug | info | warn | error   (defecto: info)
+#     HOMEPAGE_PROBE / VERIFY_REPOS / REGISTRY_LOOKUP   true|false (defecto true)
+#     PROBE_TIMEOUT s (20) | PROBE_JOBS N (8) | PROBE_CACHE | LOOKUP_CACHE
+#     OVERRIDES_FILE  mapeos manuales "pkgname<TAB>URL_repo"
+#
+# Resolución pkg → repo git (resolve::run, en este orden):
+#   1. OVERRIDES_FILE: mapeos manuales "pkgname<TAB>URL_repo"
+#   2. homepage accesible como repo git: git ls-remote (cache en
+#      STATE_DIR/probe-cache.tsv). Solo si falla se baja a la cascada:
+#   3. offline: gramática de forges (github/gitlab/codeberg/gitea/sr.ht/
+#      bitbucket/googlesource/repo.or.cz + ARCHIVE_HOSTS) y tablas de
+#      mirrors → forge (GNOME, XFCE, X.org, freedesktop, GNU/savannah,
+#      Apache, launchpad, kernel.org, sourceware, Qt, mate, videolan,
+#      netfilter, osgeo, fcitx, yubico, ...) sobre distfiles y changelog
+#   4. APIs de registro: PyPI, MetaCPAN, crates.io, SourceForge, KDE invent
+#   El resto queda como "sin repo git" (NOGIT), candidato a override.
+# `list -W` ejecuta la cascada con red; `list` a secas es offline.
+#
+# Subcomando distfiles:
+#   Descarga el conjunto ACTUAL de distfiles (URLs+checksums de los
+#   templates de los paquetes instalados) a un mirror plano compatible
+#   con XBPS_DISTFILES_FALLBACK y con hostdir/sources (índice by_sha256).
+#   Cadena por fichero: presente → semilla → mirrors extra → upstream →
+#   repo-default.voidlinux.org/distfiles → sources.voidlinux.org/<pkgver>.
+#   Incremental (-m N por pasada); fallos en STATE_DIR/distfiles-failed.tsv.
+#
+# Incrementalidad (archive):
+#   - Se consulta Gitea (GET /user/repos o /orgs/<owner>/repos) para saber qué
+#     mirrors existen: los existentes se omiten. La fuente de verdad es el
+#     servidor, no un cache local.
+#   - Los fallos se registran en STATE_DIR/failed.tsv y no se reintentan salvo
+#     con -r. Los aciertos se registran en created.log.
+#   - -m N limita cuántos mirrors nuevos se crean por ejecución (default 25)
+#     para no saturar el servidor con clones; -m 0 = ilimitado.
+#   - -f/--force: si un repo ya existe en el owner destino como mirror con otra
+#     URL de origen, se elimina (DELETE /repos/{owner}/{repo}) y se vuelve a
+#     crear con la URL nueva; los que no son mirrors nunca se borran.
+#   - Cada URL se comprueba con curl: si redirige (HTTP 3xx) se resuelve la
+#     redirección y se usa la URL final como origen del mirror.
+#
+# Ejecución periódica (ejemplo crontab, semanal):
+#   17 4 * * 1  /ruta/a/void-archive archive -m 25 >> ~/.local/state/void-archive/cron.log 2>&1
+#
+# Requiere: bash, curl, jq, awk, flock (+ git y timeout para sondas).
+set -eu
+
+GITEA_URL_DEFAULT="https://git.danoloan.es"
+CONF_FILE_DEFAULT="${XDG_CONFIG_HOME:-${HOME:-/tmp}/.config}/void-archive/config"
+STATE_DIR_DEFAULT="${XDG_STATE_HOME:-${HOME:-/tmp}/.local/state}/void-archive"
+INTERVAL_DEFAULT="8h0m0s"
+MAX_DEFAULT=25
+
+# ============================================================================
+# logging — todo a stderr, con timestamp UTC y nivel
+# ============================================================================
+
+log::num() {
+	case "$1" in
+		debug) echo 0 ;;
+		info) echo 1 ;;
+		warn) echo 2 ;;
+		error) echo 3 ;;
+		*) die "nivel de log desconocido: $1 (debug|info|warn|error)" ;;
+	esac
+}
+
+log::write() {
+	local lvl="$1"
+	shift
+	if [ "$(log::num "$lvl")" -ge "$(log::num "$LOG_LEVEL")" ]; then
+		printf '%s [%s] %s\n' "$(date -u +%FT%TZ)" "$(printf '%s' "$lvl" | tr 'a-z' 'A-Z')" "$*" >&2
+	fi
+}
+
+log::debug() { log::write debug "$@"; }
+log::info() { log::write info "$@"; }
+log::warn() { log::write warn "$@"; }
+log::error() { log::write error "$@"; }
+
+die() {
+	log::error "$*"
+	exit 1
+}
+
+# deps::need cmd... — comprueba dependencias externas justo cuando hacen falta
+# (los --help y los usages no requieren ninguna)
+deps::need() {
+	local d
+	for d in "$@"; do
+		command -v "$d" >/dev/null || die "falta $d (necesario para este subcomando)"
+	done
+}
+
+# ============================================================================
+# opciones largas — se normalizan a la forma corta antes de getopts
+# ============================================================================
+
+# opts::normalize <spec-getopts> <mapa "larga=corta ..."> [args...]
+# Convierte "--larga[=valor]" a "-corta valor" y deja el resto intacto.
+# Ataja además las globales --log-level[=]N, --verbose y --quiet.
+# El resultado queda en el array global OPTS.
+opts::normalize() {
+	local spec="$1" map="$2"
+	shift 2
+	local arg name val short m wantarg
+	OPTS=()
+	while [ $# -gt 0 ]; do
+		arg="$1"
+		shift
+		case "$arg" in
+			--)
+				OPTS+=("--")
+				while [ $# -gt 0 ]; do
+					OPTS+=("$1")
+					shift
+				done
+				break
+				;;
+			--log-level)
+				[ $# -gt 0 ] || die "--log-level requiere un valor (debug|info|warn|error)"
+				LOG_LEVEL="$1"
+				shift
+				;;
+			--log-level=*)
+				LOG_LEVEL="${arg#*=}"
+				;;
+			--*)
+				name="${arg#--}"
+				case "$name" in
+					*=*) name="${name%%=*}"; val="${arg#*=}" ;;
+					*) val="" ;;
+				esac
+				short=""
+				for m in $map; do
+					if [ "${m%%=*}" = "$name" ]; then
+						short="${m##*=}"
+						break
+					fi
+				done
+				[ -n "$short" ] || die "opción desconocida: --$name (ver --help)"
+				wantarg=false
+				case "$spec" in
+					*"$short:"*) wantarg=true ;;
+				esac
+				if $wantarg; then
+					if [ -z "$val" ]; then
+						[ $# -gt 0 ] || die "--$name requiere un valor"
+						val="$1"
+						shift
+					fi
+					OPTS+=("-$short" "$val")
+				else
+					[ -n "$val" ] && die "--$name no admite valor"
+					OPTS+=("-$short")
+				fi
+				;;
+			*)
+				OPTS+=("$arg")
+				;;
+		esac
+	done
+}
+
+usage_general() {
+	cat <<EOF
+Uso: $(basename "$0") <subcomando> [opciones]
+
+Subcomandos:
+  list       Listar paquetes fuente instalados y sus URLs de origen
+  mirror     Crear un mirror individual: $(basename "$0") mirror <URL_REPO>
+  archive    Crear incrementalmente los mirrors git que falten (para cron)
+  distfiles  Descargar el conjunto actual de fuentes a un mirror plano
+             (compatible con XBPS_DISTFILES_FALLBACK)
+  status     Estado: existentes / pendientes / fallidos
+  help       Ayuda: $(basename "$0") help [subcomando]
+
+Credenciales y configuración — TODO por variables de entorno; el fichero
+$CONF_FILE_DEFAULT es OPCIONAL (el entorno siempre gana sobre él):
+
+  GITEA_URL        instancia de Gitea       (defecto: $GITEA_URL_DEFAULT)
+  GITEA_TOKEN      token de API; alternativa: GITEA_USER + GITEA_PASS
+  UPSTREAM_USER    \\
+  UPSTREAM_TOKEN   /  repo upstream privado (solo subcomando mirror)
+  ARCHIVE_OWNER    owner destino             (defecto: usuario del token)
+  ARCHIVE_INTERVAL intervalo de sync         (defecto: $INTERVAL_DEFAULT)
+  ARCHIVE_MAX      mirrors nuevos por pasada (defecto: $MAX_DEFAULT; 0 = ilimitado)
+  ARCHIVE_PRIVATE  true | false              (defecto: true)
+  ARCHIVE_HOSTS    forges extra, separados por espacio
+  VOIDPKGS         raíz del clon void-packages (defecto: directorio actual)
+  PKGDB            pkgdb de XBPS             (defecto: /var/db/xbps/pkgdb-*.plist)
+  STATE_DIR        estado del archivo        (defecto: $STATE_DIR_DEFAULT)
+  LOG_LEVEL        debug | info | warn | error (defecto: info)
+  HOMEPAGE_PROBE   homepage como repo si responde a git ls-remote (true)
+  VERIFY_REPOS     verificar candidatos offline con git ls-remote (true)
+  REGISTRY_LOOKUP  consultar APIs PyPI/MetaCPAN/crates/SF/KDE (true)
+  PROBE_TIMEOUT    timeout de cada sonda git, segundos (20)
+  PROBE_JOBS       sondas git en paralelo (8)
+  OVERRIDES_FILE   mapeos manuales pkgname<TAB>URL_repo
+                   (defecto: ~/.config/void-archive/overrides.tsv)
+  DISTFILES_MAX / DISTFILES_JOBS / DISTFILES_TIMEOUT   límites de
+                   distfiles (50 / 4 / 300)
+  DISTFILES_MIRRORS  mirrors extra (espacio) para distfiles
+  DISTFILES_SEED     directorio semilla para distfiles
+
+Logging (común a todos los subcomandos; va a stderr con timestamp):
+  -v, --verbose        equivalente a --log-level=debug
+  -q, --quiet          equivalente a --log-level=warn
+      --log-level NIVEL
+
+Scopes mínimos del token (Gitea: Ajustes → Aplicaciones → Generate New Token):
+  user:read + repository:write           si el destino es tu usuario
+  + organization:read                    además, si -o/ARCHIVE_OWNER es una org
+  (nada de admin:*, issue, package…; en 1.27 los scopes son por categoría,
+   así que conviene un token dedicado)
+
+Ejemplos:
+  # Fuentes de los paquetes instalados (offline) o cascada completa:
+  $(basename "$0") list --outdir /tmp/repos
+  $(basename "$0") list -W --outdir /tmp/repos
+
+  # Mirror individual (con --dry-run no crea nada, solo muestra el payload):
+  $(basename "$0") mirror -t https://github.com/void-linux/void-packages.git
+  $(basename "$0") mirror --owner mirrors --interval 30m https://gitlab.com/gitlab-org/gitlab.git
+
+  # Mirror plano de las fuentes actuales (para XBPS_DISTFILES_FALLBACK):
+  $(basename "$0") distfiles -o /srv/mirror/void-distfiles -m 100
+
+  # Archivo incremental (p. ej. desde cron):
+  $(basename "$0") status --voidpkgs /ruta/a/void-packages
+  $(basename "$0") archive -m 25
+  $(basename "$0") archive -r        # reintentar fallos cacheados
+  $(basename "$0") archive -f        # recrear mirrors que apunten a otra URL
+
+Bajo el capó, el endpoint de API es POST /api/v1/repos/migrate con
+mirror=true; el equivalente en curl sería:
+  curl -X POST "https://git.danoloan.es/api/v1/repos/migrate" \\
+    -H "Authorization: token \$GITEA_TOKEN" -H "Content-Type: application/json" \\
+    -d '{"clone_addr":"https://github.com/o/r.git",
+         "repo_name":"r", "repo_owner":"mirrors",
+         "mirror":true, "mirror_interval":"8h0m0s",
+         "service":"git", "private":true}'
+EOF
+	exit "${USAGE_EXIT:-1}"
+}
+
+# ----------------------------------------------------------------------------
+# config::load — lee KEY=VALUE de un fichero sin pisar variables ya definidas
+# en el entorno. Acepta comillas alrededor del valor e ignora comentarios.
+# ----------------------------------------------------------------------------
+config::load() {
+	conf="$1"
+	[ -f "$conf" ] || return 0
+
+	while IFS='=' read -r key val; do
+		case "$key" in
+			GITEA_URL | GITEA_TOKEN | GITEA_USER | GITEA_PASS | UPSTREAM_USER | UPSTREAM_TOKEN | UPSTREAM_PASS | ARCHIVE_OWNER | ARCHIVE_INTERVAL | ARCHIVE_MAX | ARCHIVE_PRIVATE | ARCHIVE_HOSTS | VOIDPKGS | PKGDB | STATE_DIR | LOG_LEVEL | HOMEPAGE_PROBE | VERIFY_REPOS | REGISTRY_LOOKUP | PROBE_TIMEOUT | PROBE_JOBS | PROBE_CACHE | LOOKUP_CACHE | OVERRIDES_FILE | DISTFILES_MAX | DISTFILES_JOBS | DISTFILES_TIMEOUT | DISTFILES_MIRRORS | DISTFILES_SEED)
+				val="${val#\"}"; val="${val%\"}"
+				val="${val#\'}"; val="${val%\'}"
+				if [ -z "${!key:-}" ]; then
+					export "$key=$val"
+				fi
+				;;
+		esac
+	done < <(grep -E '^[A-Z_][A-Z0-9_]*=' "$conf" || true)
+}
+
+config::init() {
+	config::load "$CONF_FILE_DEFAULT"
+	[ -n "${OPT_CONF:-}" ] && config::load "$OPT_CONF"
+	GITEA_URL="${GITEA_URL:-$GITEA_URL_DEFAULT}"
+	STATE_DIR="${STATE_DIR:-$STATE_DIR_DEFAULT}"
+	LOG_LEVEL="${LOG_LEVEL:-info}"
+	HOMEPAGE_PROBE="${HOMEPAGE_PROBE:-true}"
+	VERIFY_REPOS="${VERIFY_REPOS:-true}"
+	REGISTRY_LOOKUP="${REGISTRY_LOOKUP:-true}"
+	PROBE_TIMEOUT="${PROBE_TIMEOUT:-20}"
+	PROBE_JOBS="${PROBE_JOBS:-8}"
+	PROBE_CACHE="${PROBE_CACHE:-$STATE_DIR/probe-cache.tsv}"
+	LOOKUP_CACHE="${LOOKUP_CACHE:-$STATE_DIR/lookup.tsv}"
+	OVERRIDES_FILE="${OVERRIDES_FILE:-${XDG_CONFIG_HOME:-${HOME:-/tmp}/.config}/void-archive/overrides.tsv}"
+	DISTFILES_MAX="${DISTFILES_MAX:-50}"
+	DISTFILES_JOBS="${DISTFILES_JOBS:-4}"
+	DISTFILES_TIMEOUT="${DISTFILES_TIMEOUT:-300}"
+	DISTFILES_MIRRORS="${DISTFILES_MIRRORS:-}"
+	case "$LOG_LEVEL" in
+		debug | info | warn | error) : ;;
+		*) die "LOG_LEVEL no válido: $LOG_LEVEL (debug|info|warn|error)" ;;
+	esac
+	case "$HOMEPAGE_PROBE" in true | false) : ;; *) die "HOMEPAGE_PROBE debe ser true o false" ;; esac
+	case "$VERIFY_REPOS" in true | false) : ;; *) die "VERIFY_REPOS debe ser true o false" ;; esac
+	case "$REGISTRY_LOOKUP" in true | false) : ;; *) die "REGISTRY_LOOKUP debe ser true o false" ;; esac
+	case "$PROBE_TIMEOUT" in '' | *[!0-9]*) die "PROBE_TIMEOUT debe ser numérico" ;; esac
+	case "$PROBE_JOBS" in '' | *[!0-9]*) die "PROBE_JOBS debe ser numérico" ;; esac
+}
+
+# ============================================================================
+# list — enumerar paquetes fuente y URLs
+# ============================================================================
+
+pkgdb::candidates() {
+	pkgdb="$1"
+
+	awk '
+		# Clave de paquete del registro (un tab de indentación).
+		/^\t<key>[^<]+<\/key>\t*$/ {
+			name = $0
+			sub(/^\t<key>/, "", name); sub(/<\/key>.*$/, "", name)
+			cur = name; has_src = 0; src = ""
+			next
+		}
+		cur && /<key>sourcepkg<\/key>/ {
+			has_src = 1
+			getline
+			sub(/.*<string>/, "", $0); sub(/<\/string>.*/, "", $0)
+			src = $0
+		}
+		cur && /^\t<\/dict>\t*$/ {
+			if (has_src && src != "") print src
+			else print cur
+			cur = ""
+		}
+	' "$pkgdb" | sort -u
+}
+
+# Macros de sitio (GNU_SITE, PYPI_SITE, ...) definidas en common/.
+config::sites() {
+	voidpkgs="$1"
+	awk -F= '/^[A-Z_][A-Z0-9_]*_SITE=/ {
+		name = $1; $1 = ""; val = substr($0, 2); gsub(/^"|"$/, "", val)
+		print name "\t" val
+	}' "$voidpkgs"/common/environment/*/misc.sh 2>/dev/null | sort -u
+}
+
+# Máquina de estados por líneas sobre los templates (una sola pasada de awk):
+# captura version/pkgname/_vars (sin comillas) y homepage/distfiles (con
+# comillas, multilínea) y resuelve expansiones ${...} (sustitución, recortes
+# con glob, macros de sitio).
+template::extract_all() {
+	awk -v SITES="$SITES_DATA" '
+		function lreplace(str, pat, repl, how,   out, i, pl) {
+			out = ""; pl = length(pat)
+			if (pl == 0) return str
+			while ((i = index(str, pat)) > 0) {
+				out = out substr(str, 1, i - 1) repl
+				str = substr(str, i + pl)
+				if (how == "1") break
+			}
+			return out str
+		}
+		function glob2re(g,   r, i, ch) {
+			r = ""
+			for (i = 1; i <= length(g); i++) {
+				ch = substr(g, i, 1)
+				if (ch == "*")           r = r ".*"
+				else if (ch == "?")      r = r "."
+				else if (index(".+()[]{}|^$\\/", ch)) r = r "\\" ch
+				else                     r = r ch
+			}
+			return r
+		}
+		function grefull(g, s,   re) { re = glob2re(g); return (s ~ "^" re "$") }
+		function strip_prefix(val, pat, is_long,   k, n, fk) {
+			n = length(val); fk = -1
+			for (k = 0; k <= n; k++) {
+				if (grefull(pat, substr(val, 1, k))) {
+					if (!is_long) return substr(val, k + 1)
+					fk = k
+				}
+			}
+			return (fk >= 0 ? substr(val, fk + 1) : val)
+		}
+		function strip_suffix(val, pat, is_long,   cut, n, fc) {
+			n = length(val); fc = -1
+			for (cut = n; cut >= 0; cut--) {
+				if (grefull(pat, substr(val, cut + 1))) {
+					if (!is_long) return substr(val, 1, cut)
+					fc = cut
+				}
+			}
+			return (fc >= 0 ? substr(val, 1, fc) : val)
+		}
+		function lookup(name) {
+			if (name == "pkgname") return pkgname
+			if (name == "version") return version
+			if (name == "homepage") return home
+			if (name in vars)       return vars[name]
+			if (name in sites)      return sites[name]
+			return "\001"
+		}
+		function do_subst(val, rest,   p) {
+			split(rest, p, "/")
+			if (p[2] == "") return lreplace(val, p[3], p[4], "g")
+			return lreplace(val, p[2], p[3], "1")
+		}
+		function evalparam(body,   name, rest, c, val) {
+			if (!match(body, /^[A-Za-z_][A-Za-z0-9_]*/)) return "${" body "}"
+			name = substr(body, 1, RLENGTH)
+			rest = substr(body, RLENGTH + 1)
+			val  = lookup(name)
+			if (val == "\001") return "${" body "}"
+			if (rest == "")    return val
+			c = substr(rest, 1, 1)
+			if (c == "/")      return do_subst(val, rest)
+			if (c == "#") {
+				if (substr(rest, 1, 2) == "##") return strip_prefix(val, substr(rest, 3), 1)
+				return strip_prefix(val, substr(rest, 2), 0)
+			}
+			if (c == "%") {
+				if (substr(rest, 1, 2) == "%%") return strip_suffix(val, substr(rest, 3), 1)
+				return strip_suffix(val, substr(rest, 2), 0)
+			}
+			return "${" body "}"
+		}
+		# Pase único, no recursivo. evalparam() usa match() y cambiaría
+		# RSTART/RLENGTH, por eso se guardan en locales (rs, rl).
+		function resolve(s,   out, rest, body, rs, rl, v) {
+			out = ""; rest = s
+			while (match(rest, /\$\{[^}]+\}/)) {
+				rs = RSTART; rl = RLENGTH
+				out = out substr(rest, 1, rs - 1)
+				body = substr(rest, rs + 2, rl - 3)
+				out = out evalparam(body)
+				rest = substr(rest, rs + rl)
+			}
+			rest = out rest
+			out = ""
+			while (match(rest, /\$[A-Za-z_][A-Za-z0-9_]*/)) {
+				rs = RSTART; rl = RLENGTH
+				out = out substr(rest, 1, rs - 1)
+				v = lookup(substr(rest, rs + 1, rl - 1))
+				out = out (v == "\001" ? substr(rest, rs, rl) : v)
+				rest = substr(rest, rs + rl)
+			}
+			return out rest
+		}
+		function assign(name, val) {
+			if      (name == "homepage")   home = val
+			else if (name == "changelog")  change = val
+			else if (name == "distfiles")  dist = val
+			else if (name == "distfiles+") dist = (dist == "" ? val : dist " " val)
+			else if (name == "checksum")   cksum = (cksum == "" ? val : cksum " " val)
+			else if (name == "checksum+")  cksum = (cksum == "" ? val : cksum " " val)
+			else if (name == "version")    version = resolve(val)
+			else if (name == "pkgname")    pkgname = val
+			else if (name ~ /^_/)          vars[name] = resolve(val)
+		}
+		function reset() {
+			pkgname = PKGDIR; version = ""; home = ""; dist = ""; change = ""; cksum = ""; collecting = ""; buf = ""
+			split("", vars); split("", seen)
+		}
+		# emit: distfiles (URL limpia), nombres locales (sintaxis url>nombre,
+		# igual que xbps-src: curfile = basename(tras ">")) y checksums,
+		# alineados por índice tal y como los empareja xbps-src.
+		function emit(   _out, _locs, _cks, _nf, _ckn, _i, _u, _r, _loc) {
+			home = resolve(home)
+			_out = ""; _locs = ""; _cks = ""
+			_nf = split(dist, _a, /[ \t\n\r]+/)
+			_ckn = split(cksum, _c, /[ \t\n\r]+/)
+			for (_i = 1; _i <= _nf; _i++) {
+				_r = _a[_i]
+				if (_r == "") continue
+				_u = _r
+				sub(/>.*$/, "", _u)
+				if (_u == "" || _u in seen) continue
+				seen[_u] = 1
+				_u = resolve(_u)
+				if (index(_r, ">") > 0) {
+					_loc = substr(_r, index(_r, ">") + 1)
+					_loc = resolve(_loc)
+				} else {
+					_loc = _u
+				}
+				sub(/^.*\//, "", _loc)
+				_out = (_out == "" ? _u : _out " " _u)
+				_locs = (_locs == "" ? _loc : _locs " " _loc)
+				_cks = (_cks == "" ? "" : _cks " ") (_i <= _ckn ? _c[_i] : "")
+			}
+			print pkgname "\t" home "\t" _out "\t" resolve(change) "\t" version "\t" _locs "\t" _cks
+		}
+		BEGIN {
+			first = 1
+			ns = split(SITES, _sl, "\n")
+			for (_i = 1; _i <= ns; _i++) { split(_sl[_i], _pr, "\t"); sites[_pr[1]] = _pr[2] }
+		}
+		FNR == 1 {
+			if (!first) emit()
+			first = 0
+			PKGDIR = FILENAME; sub(/\/template$/, "", PKGDIR); sub(/^.*\//, "", PKGDIR)
+			reset()
+		}
+		{
+			line = $0; sub(/\r$/, "", line)
+			if (collecting != "") {
+				if (index(line, "\"")) {
+					buf = (buf == "" ? "" : buf "\n") substr(line, 1, index(line, "\"") - 1)
+					assign(collecting, buf)
+					collecting = ""; buf = ""
+				} else {
+					buf = (buf == "" ? line : buf "\n" line)
+				}
+				next
+			}
+			if (line ~ /^(homepage|distfiles|changelog|checksum|version|pkgname|_[A-Za-z0-9_]+)\+?=/) {
+				eq = index(line, "=")
+				name = substr(line, 1, eq - 1)
+				val  = substr(line, eq + 1)
+				if (val ~ /^"/) {
+					inner = substr(val, 2)
+					if (index(inner, "\"")) {
+						assign(name, substr(inner, 1, index(inner, "\"") - 1))
+					} else {
+						collecting = name; buf = inner
+					}
+				} else {
+					v = val; sub(/[ \t\r]+$/, "", v)   # no recortar '#': aparece en ${v##}
+					assign(name, v)
+				}
+			}
+		}
+		END { if (!first) emit() }
+	' "$@"
+}
+
+# list::collect <voidpkgs> <pkgdb> — imprime el TSV pkgname<TAB>home<TAB>dists
+# en stdout; deja en MISSING_PKGS el nº de candidatos sin template local.
+list::collect() {
+	voidpkgs="$1"
+	pkgdb="$2"
+	srcpkgs="$voidpkgs/srcpkgs"
+
+	candidates=$(pkgdb::candidates "$pkgdb")
+
+	local templates=() pkg rt
+	declare -A seen_t=()
+	MISSING_PKGS=0
+	for pkg in $candidates; do
+		if [ -f "$srcpkgs/$pkg/template" ]; then
+			# alias por symlink (66-doc -> 66): el template cuenta una vez
+			rt=$(realpath "$srcpkgs/$pkg/template")
+			if [ -z "${seen_t[$rt]:-}" ]; then
+				seen_t["$rt"]=1
+				templates+=("$srcpkgs/$pkg/template")
+			fi
+		else
+			MISSING_PKGS=$((MISSING_PKGS + 1))
+		fi
+	done
+
+	[ "${#templates[@]}" -gt 0 ] || return 0
+	SITES_DATA=$(config::sites "$voidpkgs")
+	template::extract_all "${templates[@]}"
+}
+
+# ----------------------------------------------------------------------------
+# plan::extract — del TSV pkgname<TAB>homepage<TAB>distfiles<TAB>changelog
+# produce el PLAN de resolución por paquete (una línea por paquete):
+#   pkgname <TAB> homepage <TAB> canon <TAB> lookup <TAB> urls
+#
+#   canon:  repo derivable SIN red: gramática de forges (S1) o tablas de
+#           mirrors → forge (S2), sobre distfiles, luego changelog y por
+#           último la propia homepage (último recurso offline).
+#   lookup: "kind:key" para hosts cuyo repo solo se obtiene con una API
+#           (pypi/cpan/crates/sf/kde); lo resuelve resolve::run con red.
+#   urls:   todas las URLs candidatas (para el informe NOGIT).
+#
+# Gramática (S1): github/gitlab (y derivados: gnome, freedesktop, arch,
+# salsa, opendev, kde, xfce, videolan, instancias gitlab.*), gitea.com,
+# codeberg, git.sr.ht, bitbucket, *.googlesource.com y repo.or.cz.
+# ARCHIVE_HOSTS añade más hosts. Los distfiles tipo
+# .../archive/refs/tags/v1.tar.gz, /releases/download/..., /-/archive/...
+# o /snapshot/... se reducen al repo.
+# ----------------------------------------------------------------------------
+plan::extract() {
+	awk -v EXTRA_HOSTS="${ARCHIVE_HOSTS:-}" '
+		function istrunc(s) {
+			return (s == "-" || s == "+archive" || s == "+refs" || s == "+log" ||
+				s == "+diff" || s == "+blame" || s == "archive" || s == "releases" || s == "raw" ||
+				s == "commit" || s == "commits" || s == "tags" || s == "tag" ||
+				s == "snapshot" || s == "snapshots" || s == "wiki" || s == "wikis" ||
+				s == "issues" || s == "pulls" || s == "milestones" || s == "forks" ||
+				s == "stargazers" || s == "watchers" || s == "blob" || s == "tree" ||
+				s == "compare" || s == "download" || s == "downloads" || s == "patch" ||
+				s == "patches" || s == "plain" || s == "cgit" || s == "file" ||
+				s == "files" || s == "history" || s == "src" || s == "shortlog" ||
+				s == "log" || s == "about" || s == "robots.txt" ||
+				s == "uploads" || s == "packages" || s == "package_files" || s == "generic")
+		}
+		function isforge(h) {
+			if (h == "github.com" || h == "gitlab.com" || h == "gitlab.gnome.org" ||
+				h == "gitlab.freedesktop.org" || h == "gitlab.archlinux.org" ||
+				h == "invent.kde.org" || h == "codeberg.org" || h == "gitea.com" ||
+				h == "git.sr.ht" || h == "salsa.debian.org" || h == "opendev.org" ||
+				h == "bitbucket.org" || h == "repo.or.cz" || h == "code.videolan.org" ||
+				h == "gitlab.xfce.org") return 1
+			if (h ~ /^gitlab[.-]/) return 1   # instancias gitlab autoalojadas
+			if (h ~ /\.googlesource\.com$/) return 1
+			return (h in extra)
+		}
+		# Devuelve "canon \t name \t prev" o "" si la URL no es de un repo.
+		function parse(u,   s, n, h, p, a, m, i, canon, name, prev, two) {
+			s = u
+			sub(/[?#].*$/, "", s)
+			sub(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//, "", s)
+			if ((n = index(s, "@")) > 0) s = substr(s, n + 1)   # user@ / git@
+			n = index(s, "/")
+			if (n == 0) return ""
+			h = tolower(substr(s, 1, n - 1))
+			p = substr(s, n + 1)
+			sub(/:.*/, "", h)                                  # puerto ssh / scp
+			# hosts de contenido de github: el repo va en la ruta
+			if (h == "raw.githubusercontent.com" || h == "codeload.github.com") {
+				sub(/^\/+/, "", p); sub(/\/+$/, "", p)
+				if (split(p, ag, "/") < 2) return ""
+				return "https://github.com/" ag[1] "/" ag[2] "\t" ag[2] "\t" ag[1]
+			}
+			if (!isforge(h)) return ""
+			sub(/^\/+/, "", p); sub(/\/+$/, "", p)
+			sub(/\.git$/, "", p)
+			if (p == "") return ""
+			# gitlab: URLs de la API de paquetes -> repo real (api/v4/projects/owner%2Frepo/...)
+			if (h ~ /^gitlab/ && p ~ /^api\/v4\/projects\//) {
+				sub(/^api\/v4\/projects\//, "", p)
+				sub(/\/.*$/, "", p)
+				gsub(/%2F/, "/", p)
+			}
+			m = split(p, a, "/")
+			# googlesource: los marcadores van en el segmento 2 (+archive, +refs, ...)
+			if (m >= 2 && a[2] ~ /^\+/) m = 1
+			# Truncado común (desde el 3er segmento) para el resto de forges
+			for (i = 3; i <= m; i++) { if (istrunc(a[i])) { m = i - 1; break } }
+			if (h == "repo.or.cz") {
+				if (a[1] == "r") { for (i = 2; i <= m; i++) a[i-1] = a[i]; m-- }
+				if (m < 1) return ""
+				sub(/\.git$/, "", a[m])
+				name = a[m]; prev = h
+			} else if (h ~ /googlesource\.com$/) {
+				if (m < 1) return ""
+				sub(/\.git$/, "", a[m])
+				name = a[m]; prev = (m >= 2 ? a[m-1] : h)
+			} else if (h == "git.sr.ht") {
+				if (m != 2 || a[1] !~ /^~/) return ""
+				sub(/\.git$/, "", a[m])
+				name = a[2]; prev = a[1]
+			} else {
+				two = (h == "github.com" || h == "gitea.com" || h == "codeberg.org" || h == "bitbucket.org")
+				if (two && m != 2) return ""
+				if (!two && m < 2) return ""
+				if (a[1] in reserved) return ""
+				sub(/\.git$/, "", a[m])   # .git en segmento intermedio tras truncar
+				name = a[m]; prev = a[m-1]
+			}
+			canon = "https://" h "/"
+			for (i = 1; i <= m; i++) canon = canon (i > 1 ? "/" : "") a[i]
+			sub(/^~/, "", prev)
+			return canon "\t" name "\t" prev
+		}
+		# stripver: "foo-1.2.3.tar.gz" → "foo" (nombre de proyecto del fichero)
+		function stripver(f,   s) {
+			s = f
+			sub(/\.(tar\.(gz|bz2|xz|zst|lzma)|tgz|zip|gem|crate|whl|7z|jar)$/, "", s)
+			sub(/-v?[0-9][0-9a-zA-Z.+_~-]*$/, "", s)
+			return s
+		}
+		# table (S2): hosts espejo de releases → URL canónica del repo upstream.
+		# Determinista (sin red); el runtime la verifica con git ls-remote.
+		function table(u,   s, n, h, p, a, m, b, rest, nm) {
+			s = u; sub(/[?#].*$/, "", s)
+			sub(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//, "", s)
+			n = index(s, "/"); if (n == 0) return ""
+			h = tolower(substr(s, 1, n - 1)); p = substr(s, n + 1)
+			sub(/:[0-9]+$/, "", h)
+			sub(/^\/+/, "", p); sub(/\/+$/, "", p)
+			m = split(p, a, "/"); if (m < 2) return ""
+			b = stripver(a[m])
+			# GNOME
+			if (h == "download.gnome.org" || h == "ftp.gnome.org")
+				return "https://gitlab.gnome.org/GNOME/" a[2]
+			# XFCE (la categoría va en la ruta: src/<cat>/<pkg>)
+			if (h == "archive.xfce.org" || h == "www.xfce.org" || h == "cache.xfce.org")
+				return (a[1] == "src" && m >= 4) ? "https://gitlab.xfce.org/" a[2] "/" a[3] : ""
+			# X.org: releases/individual/<cat>/<fichero>
+			if (h ~ /(^|\.)x\.org$/)
+				return (a[1] == "releases" && a[2] == "individual" && m >= 4) ? "https://gitlab.freedesktop.org/xorg/" a[3] "/" b : ""
+			# freedesktop tarballs: software/<dir>/<fichero>
+			if (h == "www.freedesktop.org" || h == "freedesktop.org")
+				return (a[1] == "software" && m >= 3) ? "https://gitlab.freedesktop.org/" a[2] "/" b : ""
+			if (h == "gstreamer.freedesktop.org")
+				return (a[1] == "src" && m >= 3) ? "https://gitlab.freedesktop.org/gstreamer/" a[2] : ""
+			# GNU / savannah
+			if ((h == "ftp.gnu.org" || h == "alpha.gnu.org") && a[1] == "gnu" && m >= 3)
+				return "https://git.savannah.gnu.org/cgit/" a[2] ".git"
+			if (h ~ /(^|\.)savannah\.gnu\.org$/)
+				return (a[1] == "releases" && m >= 3) ? "https://git.savannah.gnu.org/cgit/" a[2] ".git" : ""
+			if (h ~ /(^|\.)savannah\.nongnu\.org$/)
+				return (a[1] == "releases" && m >= 3) ? "https://git.savannah.nongnu.org/cgit/" a[2] ".git" : ""
+			# MATE
+			if (h ~ /(^|\.)mate-desktop\.org$/)
+				return (b != "") ? "https://github.com/mate-desktop/" b : ""
+			# Launchpad
+			if (h == "launchpad.net" || h == "www.launchpad.net")
+				return (a[1] != "ubuntu" && a[1] != "") ? "https://git.launchpad.net/" a[1] : ""
+			# Apache
+			if (h ~ /(^|\.)apache\.org$/ && a[1] == "dist" && m >= 3) {
+				nm = a[2]
+				if (nm == "commons") { nm = b; sub(/[0-9]+$/, "", nm) }
+				return (nm != "") ? "https://github.com/apache/" nm : ""
+			}
+			# kernel.org
+			if (h == "www.kernel.org" || h == "cdn.kernel.org" || h ~ /(^|\.)kernel\.org$/) {
+				if (a[1] != "pub") return ""
+				if (a[2] == "linux" && a[3] == "kernel")
+					return "https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git"
+				if (a[2] == "linux" && a[3] == "utils") {
+					rest = p; sub(/^pub\/linux\/utils\//, "", rest)
+					return "https://git.kernel.org/pub/scm/utils/" rest "/" a[m] ".git"
+				}
+				return ""
+			}
+			# sourceware
+			if (h == "sourceware.org" || h ~ /(^|\.)sourceware\.org$/) {
+				if (a[1] != "pub" || m < 3) return ""
+				nm = a[2]
+				if (nm == "binutils" || nm == "gdb") nm = "binutils-gdb"
+				return "https://sourceware.org/git/" nm ".git"
+			}
+			if (h == "dl.suckless.org")
+				return "https://git.suckless.org/" a[1] "/"
+			# Qt (github es mirror oficial de los módulos)
+			if (h == "download.qt.io" || h == "download.qt-project.org") {
+				if (b == "") return ""
+				if (b == "qt" || b == "qt-everywhere")
+					return "https://github.com/qt/qt" ((index(a[m], "-src-6.") > 0 || index(a[m], "-6.") > 0) ? "6" : "5")
+				sub(/-(everywhere|opensource)-src$/, "", b)
+				return "https://github.com/qt/" b
+			}
+			# Varios con org de github determinista
+			if (h == "download.fcitx-im.org" || h == "download.fcitx.org")
+				return (b != "") ? "https://github.com/fcitx/" b : ""
+			if (h == "developers.yubico.com")
+				return "https://github.com/Yubico/" a[1]
+			if (h == "kokkinizita.linuxaudio.org")
+				return (b != "") ? "https://github.com/kokkinizita/" b : ""
+			if (h == "skarnet.org")
+				return (a[1] == "software" && m >= 3) ? "https://github.com/skarnet/" a[2] : ""
+			if (h == "www.libsdl.org" || h == "libsdl.org")
+				return (b != "") ? "https://github.com/libsdl-org/" b : ""
+			if (h == "download.videolan.org")
+				return (a[1] == "videolan" && m >= 3) ? "https://code.videolan.org/videolan/" a[2] : ""
+			if (h == "download.netsurf-browser.org")
+				return (a[1] == "libs" && m >= 3) ? "https://git.netsurf-browser.org/" a[2] ".git" : ""
+			if (h == "www.netfilter.org")
+				return (a[1] == "projects" && m >= 3) ? "https://git.netfilter.org/" a[2] : ""
+			if (h == "download.osgeo.org") {
+				nm = a[2]
+				if (nm == "proj") nm = "PROJ"
+				return (m >= 3 && nm != "") ? "https://github.com/OSGeo/" nm : ""
+			}
+			if (h == "www.gnupg.org" || h == "ftp.gnupg.org")
+				return (a[1] == "gcrypt" && m >= 3) ? "https://git.gnupg.org/" a[2] ".git" : ""
+			# cgit: snapshot de git.kernel.org / git.sigrok.org
+			if (h == "git.kernel.org" || h == "git.sigrok.org") {
+				if (p ~ /\/(snapshot|archive)\//) {
+					rest = p; sub(/\/(snapshot|archive)\/.*$/, "", rest)
+					return "https://" h "/" rest
+				}
+				return ""
+			}
+			if (h == "sigrok.org")
+				return (a[1] == "downloads" && m >= 3) ? "https://git.sigrok.org/" a[2] : ""
+			# zathura y amigos
+			if (h == "pwmt.org")
+				return (a[1] == "media" && m >= 3) ? "https://github.com/pwmt/" a[2] : ""
+			# xiph: releases/<proyecto> -> gitlab.xiph.org
+			if (h == "downloads.xiph.org" || h == "xiph.org")
+				return (a[1] == "releases" && m >= 3) ? "https://gitlab.xiph.org/xiph/" a[2] : ""
+			if (h == "pari.math.u-bordeaux.fr")
+				return (a[1] == "pub" && m >= 3) ? "https://pari.math.u-bordeaux.fr/git/" a[2] ".git" : ""
+			if (h == "xdebug.org")
+				return (a[1] == "files" && b != "") ? "https://github.com/xdebug/" b : ""
+			return ""
+		}
+		# registry (S3): hosts cuyo repo solo se obtiene con una API.
+		# Devuelve "kind:key" o "".
+		function registry(u,   s, n, h, p, a, m, b) {
+			s = u; sub(/[?#].*$/, "", s)
+			sub(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//, "", s)
+			n = index(s, "/"); if (n == 0) return ""
+			h = tolower(substr(s, 1, n - 1)); p = substr(s, n + 1)
+			sub(/^\/+/, "", p); sub(/\/+$/, "", p)
+			m = split(p, a, "/"); if (m < 2) return ""
+			b = stripver(a[m])
+			if (h == "files.pythonhosted.org" || h == "pypi.org" || h == "pypi.io") {
+				if (a[1] != "packages" || m < 3) return ""
+				if (a[2] == "source" || a[2] == "py2" || a[2] == "py3") {
+					if (m < 5) return ""
+					gsub(/[-_.]+/, "-", a[4])
+					return "pypi:" tolower(a[4])
+				}
+				gsub(/[-_.]+/, "-", b)
+				return "pypi:" tolower(b)
+			}
+			if (h == "www.cpan.org" || h == "cpan.org" || h == "cpan.metacpan.org" ||
+				h == "www.metacpan.org" || h == "backpan.perl.org" || h == "search.cpan.org")
+				return (b != "") ? "cpan:" b : ""
+			if (h == "static.crates.io" || h == "static-rust.crates.io")
+				return (a[1] == "crates" && m >= 3) ? "crates:" a[2] : ""
+			if (h == "crates.io") {
+				if (a[1] == "crates" && m >= 3) return "crates:" a[2]
+				if (a[1] == "api" && a[2] == "v1" && a[3] == "crates" && m >= 5) return "crates:" a[4]
+				return ""
+			}
+			if (h == "download.kde.org" || h == "cdn.kde.org")
+				return (b != "") ? "kde:" b : ""
+			if (h == "downloads.sourceforge.net" || h == "prdownloads.sourceforge.net")
+				return ((a[1] == "sourceforge" || a[1] == "project") && m >= 3) ? "sf:" a[2] : ""
+			if (h == "sourceforge.net" || h == "www.sourceforge.net")
+				return ((a[1] == "projects" || a[1] == "project") && m >= 3) ? "sf:" a[2] : ""
+			return ""
+		}
+		BEGIN {
+			split("sponsors topics orgs features collections site apps gists explore marketplace trending enterprises organizations about pricing security user users new notifications settings", _r, " ")
+			for (i in _r) reserved[_r[i]] = 1
+			n = split(EXTRA_HOSTS, _x, " ")
+			for (i = 1; i <= n; i++) if (_x[i] != "") extra[_x[i]] = 1
+		}
+		{
+			np = split($0, f, "\t")
+			if (np < 2) next
+			pkg = f[1]; home = f[2]
+			canon = ""; look = ""
+			nurls = 0; delete urls
+			nd = split(f[3], d, " ")
+			for (j = 1; j <= nd; j++) if (d[j] != "") urls[++nurls] = d[j]
+			if (np >= 4) {
+				nc = split(f[4], c, " ")
+				for (j = 1; j <= nc; j++) if (c[j] != "") urls[++nurls] = c[j]
+			}
+			allurls = ""
+			for (j = 1; j <= nurls; j++) allurls = (allurls == "" ? urls[j] : allurls " " urls[j])
+			# canon: distfiles → changelog → homepage (gramática y tablas)
+			for (j = 1; j <= nurls && canon == ""; j++) {
+				r = parse(urls[j])
+				if (r != "") { split(r, q, "\t"); canon = q[1] }
+				if (canon == "") { t = table(urls[j]); if (t != "") canon = t }
+			}
+			if (canon == "" && home != "") {
+				r = parse(home)
+				if (r != "") { split(r, q, "\t"); canon = q[1] }
+			}
+			# lookup: primer host de registro entre las URLs
+			for (j = 1; j <= nurls && look == ""; j++) {
+				k = registry(urls[j])
+				if (k != "") look = k
+			}
+			# "-" para campos vacíos: read colapsa tabs consecutivos
+			print pkg "\t" (home == "" ? "-" : home) "\t" (canon == "" ? "-" : canon) "\t" (look == "" ? "-" : look) "\t" allurls
+		}
+	'
+}
+
+# ============================================================================
+# gitea — cliente API común
+# ============================================================================
+
+# gitea::api MÉTODO RUTA [JSON] — deja el código en GITEA_HTTP y el cuerpo en
+# GITEA_BODY.
+gitea::api() {
+	method="$1"
+	path="$2"
+	data="${3-}"
+
+	args=(-sS -X "$method" -H 'Accept: application/json' -H 'Content-Type: application/json' -w '\n%{http_code}')
+	if [ -n "${GITEA_TOKEN:-}" ]; then
+		args+=(-H "Authorization: token ${GITEA_TOKEN}")
+	elif [ -n "${GITEA_USER:-}" ] && [ -n "${GITEA_PASS:-}" ]; then
+		args+=(-u "${GITEA_USER}:${GITEA_PASS}")
+	else
+		die "sin credenciales: define GITEA_TOKEN (o GITEA_USER/GITEA_PASS) en el entorno o en $CONF_FILE_DEFAULT"
+	fi
+	if [ -n "$data" ]; then
+		args+=(-d "$data")
+	fi
+	args+=("${GITEA_URL%/}/api/v1$path")
+
+	resp=$(curl "${args[@]}") || die "no se pudo conectar con $GITEA_URL"
+	GITEA_HTTP="${resp##*$'\n'}"
+	GITEA_BODY="${resp%$'\n'*}"
+	log::debug "API $method $path -> HTTP $GITEA_HTTP"
+}
+
+gitea::errmsg() {
+	jq -r '.message // empty' <<<"$GITEA_BODY" 2>/dev/null | head -1 | cut -c1-160
+}
+
+# Verifica credenciales y deja el login en GITEA_LOGIN.
+gitea::auth() {
+	log::debug "verificando credenciales contra $GITEA_URL"
+	gitea::api GET /user
+	case "$GITEA_HTTP" in
+		200) GITEA_LOGIN=$(jq -r '.login' <<<"$GITEA_BODY"); log::debug "login: $GITEA_LOGIN" ;;
+		401 | 403) die "credenciales rechazadas por $GITEA_URL (HTTP $GITEA_HTTP). Revisa GITEA_TOKEN / GITEA_USER+GITEA_PASS" ;;
+		*) die "no se pudo verificar las credenciales: HTTP $GITEA_HTTP $(gitea::errmsg)" ;;
+	esac
+}
+
+# gitea::list_repos — imprime "owner<TAB>name" de todos los repos
+# accesibles con el token (/user/repos: propios, orgs, colaboraciones).
+gitea::list_repos() {
+	page=1
+	while :; do
+		gitea::api GET "/user/repos?limit=50&page=$page"
+		case "$GITEA_HTTP" in
+			200) : ;;
+			*) die "no se pudieron listar los repos accesibles: HTTP $GITEA_HTTP $(gitea::errmsg)" ;;
+		esac
+		n=$(jq 'length' <<<"$GITEA_BODY")
+		jq -r '.[] | .owner.login + "\t" + .name' <<<"$GITEA_BODY"
+		[ "$n" -lt 50 ] && break
+		page=$((page + 1))
+	done
+}
+
+# url::norm URL — normaliza una URL para comparar orígenes de mirrors:
+# sin query/fragmento, sin '/' final, sin sufijo .git, host en minúsculas.
+url::norm() {
+	printf '%s\n' "$1" | awk '
+		{
+			sub(/[?#].*$/, "")
+			sub(/\/+$/, ""); sub(/\.git$/, ""); sub(/\/+$/, "")
+			if (match($0, /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//)) {
+				sch = substr($0, 1, RLENGTH); rest = substr($0, RLENGTH + 1)
+				n = index(rest, "/")
+				if (n == 0) { print tolower(sch rest); exit }
+				print tolower(sch substr(rest, 1, n)) substr(rest, n + 1); exit
+			}
+			if (match($0, /^[^\/@]*@/)) {   # git@host:ruta
+				pre = substr($0, 1, RLENGTH); rest = substr($0, RLENGTH + 1)
+				n = index(rest, ":")
+				if (n == 0) { print tolower(pre rest); exit }
+				print tolower(pre substr(rest, 1, n)) substr(rest, n + 1); exit
+			}
+			print $0
+		}'
+}
+
+declare -gA URL_RESOLVED=()
+
+# url::resolve URL — comprueba con curl si URL redirige (HTTP 3xx); si es así,
+# resuelve la cadena de redirecciones y devuelve la URL final, que es la que se
+# usa como origen del mirror. Si no redirige, si la URL no es http(s) o si la
+# comprobación falla, devuelve la URL original. Los resultados se cachean en
+# URL_RESOLVED durante toda la ejecución.
+url::resolve() {
+	local u="$1"
+	case "$u" in
+		http://* | https://*) : ;;
+		*) printf '%s\n' "$u"; return 0 ;;
+	esac
+	local hit="${URL_RESOLVED[$u]:-}"
+	if [ -n "$hit" ]; then
+		printf '%s\n' "$hit"
+		return 0
+	fi
+	local out code final nu nf
+	if ! out=$(curl -sS -I -L -o /dev/null \
+		-w '%{http_code}\t%{url_effective}' \
+		--max-redirs 8 --connect-timeout 10 --max-time 60 "$u" 2>/dev/null); then
+		# algunos servidores rechazan HEAD: reintentar con GET
+		out=$(curl -sS -L -o /dev/null \
+			-w '%{http_code}\t%{url_effective}' \
+			--max-redirs 8 --connect-timeout 10 --max-time 60 "$u" 2>/dev/null) || out=""
+	fi
+	code="${out%%$'\t'*}"
+	final="${out#*$'\t'}"
+	URL_RESOLVED["$u"]="$u"
+	if [ -n "$final" ] && [ "$final" != "$u" ]; then
+		nu=$(url::norm "$u")
+		nf=$(url::norm "$final")
+		if [ "$nu" != "$nf" ]; then
+			log::info "redirección: $u -> $final (HTTP $code)"
+			URL_RESOLVED["$u"]="$final"
+		fi
+	fi
+	printf '%s\n' "${URL_RESOLVED[$u]}"
+}
+
+# ============================================================================
+# resolve — cascada de resolución pkg → repo git
+#   1) overrides manuales (OVERRIDES_FILE: "pkgname<TAB>URL")
+#   2) homepage accesible como repo git (git ls-remote, con cache)
+#   3) canon offline del plan (gramática S1 + tablas S2), verificado
+#   4) APIs de registro (PyPI, MetaCPAN, crates.io, SF, invent.kde.org)
+# El resto → NOGIT. Caches persistentes: PROBE_CACHE y LOOKUP_CACHE.
+# ============================================================================
+
+vcs::probe() {
+	GIT_TERMINAL_PROMPT=0 timeout "${PROBE_TIMEOUT:-20}" \
+		git ls-remote --exit-code -q "$1" HEAD >/dev/null 2>&1
+}
+
+# __probe — interno para xargs -P: imprime "url<TAB>ok|fail" por argumento
+cmd___probe() {
+	local u
+	for u in "$@"; do
+		if vcs::probe "$u"; then printf '%s\tok\n' "$u"
+		else printf '%s\tfail\n' "$u"; fi
+	done
+	return 0
+}
+
+resolve::load_probe_cache() {
+	declare -gA PROBE=()
+	local u st
+	[ -f "$PROBE_CACHE" ] || return 0
+	while IFS=$'\t' read -r u st; do
+		[ -n "$u" ] && PROBE["$u"]="$st" || true
+	done < "$PROBE_CACHE"
+	return 0
+}
+
+# resolve::probe_batch — lee URLs en stdin, sondea las no cacheadas (en
+# paralelo con xargs -P PROBE_JOBS) y recarga el cache.
+resolve::probe_batch() {
+	local todo u n
+	todo=$(mktemp)
+	while IFS= read -r u; do
+		[ -n "$u" ] && [ -z "${PROBE[$u]:-}" ] && printf '%s\n' "$u" >> "$todo" || true
+	done
+	if [ ! -s "$todo" ]; then rm -f "$todo"; return 0; fi
+	n=$(wc -l < "$todo")
+	log::info "sondando $n URLs con git ls-remote (jobs=$PROBE_JOBS, timeout=${PROBE_TIMEOUT}s)"
+	deps::need git timeout
+	touch "$PROBE_CACHE"
+	if [ "$PROBE_JOBS" -gt 1 ] && command -v xargs >/dev/null; then
+		xargs -r -a "$todo" -n 8 -P "$PROBE_JOBS" bash "$0" __probe >> "$PROBE_CACHE" || true
+	else
+		while IFS= read -r u; do cmd___probe "$u" >> "$PROBE_CACHE"; done < "$todo"
+	fi
+	rm -f "$todo"
+	resolve::load_probe_cache
+	return 0
+}
+
+resolve::load_lookup_cache() {
+	declare -gA LOOKC=()
+	local k v
+	[ -f "$LOOKUP_CACHE" ] || return 0
+	while IFS=$'\t' read -r k v; do
+		[ -n "$k" ] && LOOKC["$k"]="$v" || true
+	done < "$LOOKUP_CACHE"
+	return 0
+}
+
+resolve::load_overrides() {
+	declare -gA OVR=()
+	local pkg url
+	[ -f "$OVERRIDES_FILE" ] || return 0
+	while IFS=$'\t' read -r pkg url; do
+		case "$pkg" in '' | \#*) continue ;; esac
+		[ -n "$url" ] || continue
+		OVR["$pkg"]="$url"
+	done < "$OVERRIDES_FILE"
+	log::info "overrides: ${#OVR[@]} mapeos en $OVERRIDES_FILE"
+	return 0
+}
+
+# lookup::api KIND KEY — imprime la URL candidata del repo (sin verificar)
+lookup::api() {
+	local kind="$1" key="$2" out=""
+	case "$kind" in
+		pypi)
+			out=$(curl -sSf --max-time 20 "https://pypi.org/pypi/${key}/json" 2>/dev/null |
+				jq -r '
+					def repoish: test("^https?://[^/]+/[A-Za-z0-9._~-]+/[A-Za-z0-9._~-]+/?$");
+					[(.info.project_urls // {}) | to_entries[]
+						| select((.key | test("repo|source|code|git"; "i")) and (.value | repoish))
+						| .value] as $k
+					| ($k[0] // [(.info.project_urls // {}) | .[] | select(repoish)][0]) // empty' 2>/dev/null) || out=""
+			;;
+		cpan)
+			out=$(curl -sSf --max-time 20 "https://fastapi.metacpan.org/v1/release/${key}" 2>/dev/null |
+				jq -r '(.resources.repository | if type == "array" then .[0].url else .url end) // empty' 2>/dev/null) || out=""
+			case "$out" in git://github.com/*) out="https://github.com/${out#git://github.com/}" ;; esac
+			;;
+		crates)
+			out=$(curl -sSf --max-time 20 -A void-archive "https://crates.io/api/v1/crates/${key}" 2>/dev/null |
+				jq -r '.crate.repository // empty' 2>/dev/null) || out=""
+			;;
+		kde)
+			out=$(curl -sSf --max-time 20 "https://invent.kde.org/api/v4/projects?search=${key}" 2>/dev/null |
+				jq -r --arg k "$key" '([.[] | select(.path == $k)][0].path_with_namespace) // empty' 2>/dev/null) || out=""
+			if [ -n "$out" ]; then out="https://invent.kde.org/$out"; fi
+			;;
+		sf)
+			out="https://git.code.sf.net/p/${key}/code"
+			;;
+		*) return 1 ;;
+	esac
+	case "$out" in
+		git+https://* | git+http://*) out="${out#git+}" ;;
+	esac
+	[ -n "$out" ] || return 1
+	printf '%s\n' "$out"
+}
+
+# resolve::lookup "kind:key" — imprime el repo (verificado) o nada; cachea
+resolve::lookup() {
+	local spec="$1" kind key cached cand
+	kind="${spec%%:*}"; key="${spec#*:}"
+	[ -n "$key" ] || return 1
+	cached="${LOOKC[$spec]:-}"
+	if [ -n "$cached" ]; then
+		if [ "$cached" = "FAIL" ]; then return 1; fi
+		printf '%s\n' "$cached"
+		return 0
+	fi
+	cand=$(lookup::api "$kind" "$key") || cand=""
+	# los resultados de registro siempre se verifican (API/SF son heurísticos)
+	if [ -n "$cand" ] && vcs::probe "$cand"; then
+		LOOKC["$spec"]="$cand"
+		printf '%s\t%s\n' "$spec" "$cand" >> "$LOOKUP_CACHE"
+		printf '%s\n' "$cand"
+		return 0
+	fi
+	LOOKC["$spec"]="FAIL"
+	printf '%s\t%s\n' "$spec" "FAIL" >> "$LOOKUP_CACHE"
+	return 1
+}
+
+# resolve::run PLAN OUT NOGIT [PEND] — ejecuta la cascada y escribe OUT con
+# el formato "URL <TAB> nombre <TAB> paquetes" (como esperan archive/status).
+resolve::run() {
+	local plan="$1" out="$2" nogit="$3" pend="${4:-/dev/null}"
+	local rtmp pkg home canon look urls repo
+	local c_ovr=0 c_home=0 c_off=0 c_reg=0 c_no=0
+
+	mkdir -p "$STATE_DIR"
+	if $HOMEPAGE_PROBE || $VERIFY_REPOS || $REGISTRY_LOOKUP; then
+		deps::need curl jq git timeout
+	fi
+	resolve::load_overrides
+	resolve::load_probe_cache
+	resolve::load_lookup_cache
+
+	rtmp=$(mktemp -d)
+
+	# pre-sondeo en paralelo de homepages + candidatos offline
+	# (a fichero y con redirección: probe_batch NO puede ir en una pipeline,
+	#  porque la subshell perdería la recarga del cache PROBE)
+	if $HOMEPAGE_PROBE || $VERIFY_REPOS; then
+		cut -f2,3 "$plan" | tr '\t' '\n' | grep -E '^https?://' | sort -u > "$rtmp/probe.in" || true
+		resolve::probe_batch < "$rtmp/probe.in"
+	fi
+
+	local rwork="$rtmp/repos.work" nwork="$rtmp/nogit.work" pwork="$rtmp/pend.work"
+	: > "$rwork"; : > "$nwork"; : > "$pwork"
+	while IFS=$'\t' read -r pkg home canon look urls; do
+		[ -n "$pkg" ] || continue
+		home=${home/#-}; canon=${canon/#-}; look=${look/#-}   # "-" = campo vacío
+		repo=""
+		if [ -n "${OVR[$pkg]:-}" ]; then
+			repo="${OVR[$pkg]}"; c_ovr=$((c_ovr + 1))
+		elif $HOMEPAGE_PROBE && [ -n "$home" ] && [ "${PROBE[$home]:-}" = "ok" ]; then
+			repo="$home"; c_home=$((c_home + 1))
+		elif [ -n "$canon" ]; then
+			if ! $VERIFY_REPOS || [ "${PROBE[$canon]:-}" = "ok" ]; then
+				repo="$canon"; c_off=$((c_off + 1))
+			fi
+		fi
+		if [ -z "$repo" ] && $REGISTRY_LOOKUP && [ -n "$look" ]; then
+			repo=$(resolve::lookup "$look") || repo=""
+			[ -n "$repo" ] && c_reg=$((c_reg + 1)) || true
+		fi
+		if [ -n "$repo" ]; then
+			printf '%s\t%s\n' "$(url::norm "$repo")" "$pkg" >> "$rwork"
+		else
+			c_no=$((c_no + 1))
+			printf 'NOGIT\t%s\t%s\n' "$pkg" "${home:+$home }$urls" >> "$nwork"
+			if [ -n "$look" ]; then printf '%s\t%s\n' "$look" "$pkg" >> "$pwork"; fi
+		fi
+	done < "$plan"
+
+	# agregación: URL → nombre, renombrando colisiones a <prev>-<name>
+	awk -F'\t' '
+		{
+			r = $1; pkg = $2
+			if (!(r in seen)) {
+				seen[r] = 1
+				name = r; sub(/\.git$/, "", name); sub(/^.*\//, "", name)
+				prev = r; sub(/\/[^\/]*$/, "", prev); sub(/^.*\//, "", prev)
+				host = r; sub(/^[a-z]+:\/\//, "", host); sub(/\/.*$/, "", host)
+				rname[r] = name
+				rprev[r] = (prev ~ /^~/ ? substr(prev, 2) : prev)
+				rhost[r] = host
+				cnt[name]++
+			}
+			if (index("," pkgs[r] ",", "," pkg ",") == 0)
+				pkgs[r] = (pkgs[r] == "" ? pkg : pkgs[r] "," pkg)
+		}
+		END {
+			for (r in seen) {
+				nm = rname[r]
+				if (cnt[nm] > 1) nm = (rprev[r] != "" ? rprev[r] : rhost[r]) "-" nm
+				print r "\t" nm "\t" pkgs[r]
+			}
+		}
+	' "$rwork" | sort > "$out"
+	sort "$nwork" > "$nogit"
+	sort "$pwork" > "$pend"
+	rm -rf "$rtmp"
+	log::info "cascada: resueltos $((c_ovr + c_home + c_off + c_reg)) de $((c_ovr + c_home + c_off + c_reg + c_no)) (overrides=$c_ovr homepage=$c_home offline=$c_off registro=$c_reg) | sin repo git: $c_no"
+	return 0
+}
+
+# gitea::check_body_origin FULLNAME URL_ESPERADA — comprueba GITEA_BODY (un
+# repo ya consultado): mirror=true y original_url == URL esperada.
+gitea::check_body_origin() {
+	c_full="$1"; c_want="$2"
+	c_mirror=$(jq -r '.mirror // false' <<<"$GITEA_BODY")
+	if [ "$c_mirror" = "true" ]; then GITEA_IS_MIRROR=true; else GITEA_IS_MIRROR=false; fi
+	GITEA_ORIGIN=$(jq -r '.original_url // ""' <<<"$GITEA_BODY")
+	c_origin="$GITEA_ORIGIN"
+	if [ "$c_mirror" != "true" ]; then
+		log::error "conflicto: $c_full existe pero no es un mirror (esperado: $c_want)"
+		return 1
+	fi
+	if [ "$(url::norm "$c_origin")" != "$(url::norm "$c_want")" ]; then
+		log::error "conflicto: $c_full apunta a '$c_origin', se esperaba '$c_want'"
+		return 1
+	fi
+	log::debug "verificado: $c_full <- $c_want"
+	return 0
+}
+
+# gitea::verify_mirror OWNER NAME URL_ESPERADA — GET del repo y comprobar
+# que es un mirror del origen esperado.
+gitea::verify_mirror() {
+	v_owner="$1"; v_name="$2"; v_want="$3"
+	GITEA_IS_MIRROR=false
+	gitea::api GET "/repos/$v_owner/$v_name"
+	if [ "$GITEA_HTTP" != "200" ]; then
+		log::error "no se pudo verificar $v_owner/$v_name: HTTP $GITEA_HTTP $(gitea::errmsg)"
+		return 1
+	fi
+	gitea::check_body_origin "$v_owner/$v_name" "$v_want"
+}
+
+# ============================================================================
+# subcomando: mirror
+# ============================================================================
+
+repo::name_from_url() {
+	url="$1"
+	name="${url%%\?*}"
+	name="${name%%#*}"
+	name="${name%/}"
+	name="${name%.git}"
+	name="${name##*/}"
+	name="${name##*:}"
+	name="${name%.git}"
+	name="${name%/}"
+	printf '%s\n' "$name"
+}
+
+usage_mirror() {
+	cat <<EOF
+Uso: $(basename "$0") mirror <URL_DEL_REPO> [opciones]
+
+Crea un mirror (pull) del repo indicado en Gitea. Si la URL redirige (HTTP
+3xx), se resuelve con curl y se usa la URL final como origen del mirror.
+
+Opciones (corta y larga):
+  -c, --config FICHERO    Fichero de configuración adicional
+  -u, --url URL           URL base de Gitea (defecto: \$GITEA_URL o $GITEA_URL_DEFAULT)
+  -n, --name NOMBRE       Nombre del repo en Gitea (defecto: derivado de la URL)
+  -o, --owner OWNER       Propietario (defecto: usuario del token)
+  -i, --interval INTERVALO  Intervalo de sync, formato Go (defecto: $INTERVAL_DEFAULT)
+  -d, --description DESC  Descripción (defecto: "Mirror de <URL>")
+  -p, --private           Mirror privado
+  -w, --wiki              Incluir el wiki
+  -l, --lfs               Incluir LFS (requiere LFS activo en el servidor)
+  -t, --dry-run           Modo prueba: muestra el payload JSON y no crea nada
+  -v, --verbose           Log detallado (debug)
+  -q, --quiet             Solo avisos y errores
+      --log-level NIVEL   debug | info | warn | error
+  -h, --help              Esta ayuda
+
+Token: user:read + repository:write (+ organization:read si -o es una org).
+Credenciales upstream (solo si el repo a mirrorar es privado):
+  UPSTREAM_USER + UPSTREAM_TOKEN|UPSTREAM_PASS
+
+Equivalente en la API de Gitea (POST /api/v1/repos/migrate):
+  curl -X POST "\$GITEA_URL/api/v1/repos/migrate" \\
+    -H "Authorization: token \$GITEA_TOKEN" -H "Content-Type: application/json" \\
+    -d '{"clone_addr":"https://github.com/o/r.git",
+         "repo_name":"r", "repo_owner":"mirrors",
+         "mirror":true, "mirror_interval":"$INTERVAL_DEFAULT",
+         "service":"git", "private":true}'
+EOF
+	exit "${USAGE_EXIT:-1}"
+}
+
+mirror::run() {
+	opts::normalize ":c:u:n:o:i:d:ptwlvqh" \
+		"config=c url=u name=n owner=o interval=i description=d private=p wiki=w lfs=l dry-run=t verbose=v quiet=q help=h" \
+		"$@"
+	set -- "${OPTS[@]}"
+
+	local OPTIND=1 opt src name owner interval description src_resolved
+	local private=false wiki=false lfs=false dry_run=false
+	while getopts ":c:u:n:o:i:d:ptwlvqh" opt; do
+		case "$opt" in
+			c) OPT_CONF="$OPTARG" ;;
+			u) export GITEA_URL="$OPTARG" ;;
+			n) name="$OPTARG" ;;
+			o) owner="$OPTARG" ;;
+			i) interval="$OPTARG" ;;
+			d) description="$OPTARG" ;;
+			p) private=true ;;
+			w) wiki=true ;;
+			l) lfs=true ;;
+			t) dry_run=true ;;
+			v) LOG_LEVEL=debug ;;
+			q) LOG_LEVEL=warn ;;
+			h) USAGE_EXIT=0; usage_mirror ;;
+			*) usage_mirror ;;
+		esac
+	done
+	shift $((OPTIND - 1))
+
+	[ $# -eq 1 ] || usage_mirror
+	src="$1"
+	config::init
+	deps::need curl jq
+	interval="${interval:-${ARCHIVE_INTERVAL:-$INTERVAL_DEFAULT}}"
+
+	case "$src" in
+		*://* | git@*) : ;;
+		*) die "URL no válida: $src (esperaba https://… o git@host:ruta)" ;;
+	esac
+
+	# Resolver redirecciones HTTP: la URL final es el origen del mirror
+	src_resolved=$(url::resolve "$src")
+	name="${name-$(repo::name_from_url "$src")}"
+	description="${description:-Mirror de $src_resolved}"
+	case "$name" in
+		"" | *[!A-Za-z0-9._-]*) die "nombre de repo no válido: '$name' (usa -n NOMBRE)" ;;
+	esac
+
+	local up_user="${UPSTREAM_USER:-}" up_pass="" up_token=""
+	if [ -n "$up_user" ]; then
+		if [ -n "${UPSTREAM_PASS:-}" ]; then
+			up_pass="$UPSTREAM_PASS"
+		elif [ -n "${UPSTREAM_TOKEN:-}" ]; then
+			up_pass="$UPSTREAM_TOKEN"
+		fi
+	elif [ -n "${UPSTREAM_TOKEN:-}" ]; then
+		up_token="$UPSTREAM_TOKEN"
+	fi
+
+	local payload
+	payload=$(
+		jq -n \
+			--arg clone_addr "$src_resolved" \
+			--arg repo_name "$name" \
+			--arg repo_owner "${owner-}" \
+			--arg description "$description" \
+			--arg mirror_interval "$interval" \
+			--arg auth_username "$up_user" \
+			--arg auth_password "$up_pass" \
+			--arg auth_token "$up_token" \
+			--argjson private "$private" \
+			--argjson wiki "$wiki" \
+			--argjson lfs "$lfs" \
+			'{
+				clone_addr: $clone_addr,
+				repo_name: $repo_name,
+				description: $description,
+				mirror_interval: $mirror_interval,
+				private: $private,
+				wiki: $wiki,
+				lfs: $lfs,
+				mirror: true,
+				service: "git",
+				repo_owner: (if $repo_owner == "" then null else $repo_owner end),
+				auth_username: (if $auth_username == "" then null else $auth_username end),
+				auth_password: (if $auth_password == "" then null else $auth_password end),
+				auth_token: (if $auth_token == "" then null else $auth_token end)
+			} | with_entries(select(.value != null))'
+	)
+
+	if $dry_run; then
+		echo "Payload (no se enviará nada):"
+		jq . <<<"$payload"
+		echo "Nombre:  $name"
+		echo "Owner:   ${owner-<usuario del token>}"
+		echo "Destino: ${GITEA_URL%/}/${owner-<owner>}/$name"
+		return 0
+	fi
+
+	gitea::auth
+	owner="${owner:-$GITEA_LOGIN}"
+
+	gitea::api GET "/repos/$owner/$name"
+	case "$GITEA_HTTP" in
+		200)
+			if gitea::check_body_origin "$owner/$name" "$src_resolved"; then
+				log::info "$owner/$name ya está mirrorizado de $src_resolved; nada que hacer"
+				exit 0
+			fi
+			die "$owner/$name existe con un origen distinto al solicitado (ver conflicto arriba)"
+			;;
+		404) : ;;
+		*) die "error comprobando $owner/$name: HTTP $GITEA_HTTP $(gitea::errmsg)" ;;
+	esac
+
+	log::info "creando mirror: $owner/$name <- $src_resolved"
+	local t0=$SECONDS
+	gitea::api POST /repos/migrate "$payload"
+	case "$GITEA_HTTP" in
+		201) : ;;
+		409) die "$owner/$name ya existe en $GITEA_URL" ;;
+		422) die "petición inválida (¿intervalo o nombre?): $(gitea::errmsg)" ;;
+		401 | 403) die "permisos insuficientes: $(gitea::errmsg)" ;;
+		*) die "fallo creando el mirror: HTTP $GITEA_HTTP $(gitea::errmsg)" ;;
+	esac
+
+	local url
+	url=$(jq -r '.html_url // empty' <<<"$GITEA_BODY")
+	log::info "mirror creado: ${url:-${GITEA_URL%/}/$owner/$name} ($((SECONDS - t0))s)"
+	log::info "intervalo: $interval | privado: $private | wiki: $wiki | lfs: $lfs"
+	log::info "sync manual: POST ${GITEA_URL%/}/api/v1/repos/$owner/$name/mirror-sync"
+}
+
+# ============================================================================
+# subcomando: list
+# ============================================================================
+
+usage_list() {
+	cat <<EOF
+Uso: $(basename "$0") list [opciones]
+
+Genera los ficheros de fuentes de los paquetes instalados:
+  source-repos.tsv        pkgname <TAB> homepage <TAB> distfiles <TAB> changelog
+  source-repos-urls.txt   URLs únicas (homepage + distfiles), una por línea
+  source-repos-plan.tsv   plan de resolución por paquete (offline)
+  source-repos-git.tsv    repos git: URL <TAB> nombre <TAB> paquetes
+  source-repos-lookup.tsv lookups de registro pendientes o sin resolver
+  source-repos-nogit.tsv  paquetes cuyas fuentes no tienen repo git identificable
+  source-repos-unresolved.txt  candidatos sin template local (repos custom)
+
+Sin -W la resolución es offline (gramática de forges + tablas de mirrors).
+Con -W se ejecuta la cascada completa con red: overrides (OVERRIDES_FILE),
+homepage como repo git (git ls-remote, solo si falla se baja a la cascada),
+verificación de candidatos y APIs de registro (PyPI, MetaCPAN, crates.io,
+SourceForge, invent.kde.org).
+
+Opciones (corta y larga):
+  -c, --config FICHERO  Fichero de configuración adicional
+  -o, --outdir DIR      Directorio de salida (defecto: directorio actual)
+  -d, --voidpkgs DIR    Raíz del clon de void-packages
+  -p, --pkgdb RUTA      pkgdb de XBPS (defecto: /var/db/xbps/pkgdb-*.plist)
+  -W, --waterfall       Resolución con red (homepage-probe + APIs de registro)
+  -v, --verbose         Log detallado (debug)
+  -q, --quiet           Solo avisos y errores
+      --log-level NIVEL debug | info | warn | error
+  -h, --help            Esta ayuda
+EOF
+	exit "${USAGE_EXIT:-1}"
+}
+
+list::run() {
+	opts::normalize ":c:o:d:p:Wvqh" \
+		"config=c outdir=o voidpkgs=d pkgdb=p waterfall=W verbose=v quiet=q help=h" \
+		"$@"
+	set -- "${OPTS[@]}"
+
+	local OPTIND=1 opt outdir="." pkgdb="" do_waterfall=false
+	while getopts ":c:o:d:p:Wvqh" opt; do
+		case "$opt" in
+			c) OPT_CONF="$OPTARG" ;;
+			o) outdir="$OPTARG" ;;
+			d) export VOIDPKGS="$OPTARG" ;;
+			p) export PKGDB="$OPTARG" ;;
+			W) do_waterfall=true ;;
+			v) LOG_LEVEL=debug ;;
+			q) LOG_LEVEL=warn ;;
+			h) USAGE_EXIT=0; usage_list ;;
+			*) usage_list ;;
+		esac
+	done
+	config::init
+	local voidpkgs="${VOIDPKGS:-$(pwd)}"
+	pkgdb="${PKGDB:-}"   # flag -p > entorno > fichero de config
+	deps::need awk
+
+	[ -d "$voidpkgs/srcpkgs" ] || die "no se encuentra srcpkgs en '$voidpkgs'"
+	if [ -z "$pkgdb" ]; then
+		set -- /var/db/xbps/pkgdb-*.plist
+		[ -f "$1" ] || die "no se encontró pkgdb en /var/db/xbps/"
+		pkgdb="$1"
+	fi
+
+	local tsv="$outdir/source-repos.tsv"
+	local urls="$outdir/source-repos-urls.txt"
+	local plan="$outdir/source-repos-plan.tsv"
+	local git="$outdir/source-repos-git.tsv"
+	local nogit="$outdir/source-repos-nogit.tsv"
+	local lookup="$outdir/source-repos-lookup.tsv"
+	local missing="$outdir/source-repos-unresolved.txt"
+	mkdir -p "$outdir"
+	: > "$missing"
+
+	log::info "listando fuentes ($voidpkgs, pkgdb: $pkgdb)"
+	list::collect "$voidpkgs" "$pkgdb" > "$tsv"
+
+	# URLs únicas (homepage + distfiles)
+	awk -F'\t' '{
+		if ($2 != "") print $2
+		n = split($3, u, " ")
+		for (i = 1; i <= n; i++) if (u[i] != "") print u[i]
+	}' "$tsv" | sort -u > "$urls"
+
+	# Plan + cascada de resolución (con -W, la parte con red)
+	plan::extract < "$tsv" > "$plan"
+	if $do_waterfall; then
+		resolve::run "$plan" "$git" "$nogit" "$lookup"
+	else
+		local _hp="$HOMEPAGE_PROBE" _vr="$VERIFY_REPOS" _rl="$REGISTRY_LOOKUP"
+		HOMEPAGE_PROBE=false VERIFY_REPOS=false REGISTRY_LOOKUP=false
+		resolve::run "$plan" "$git" "$nogit" "$lookup"
+		HOMEPAGE_PROBE="$_hp" VERIFY_REPOS="$_vr" REGISTRY_LOOKUP="$_rl"
+	fi
+
+	log::info "paquetes fuente resueltos: $(wc -l < "$tsv") (+$MISSING_PKGS sin template local)"
+	log::info "URLs únicas: $(wc -l < "$urls") | repos git: $(wc -l < "$git") | lookups: $(wc -l < "$lookup") | sin repo git: $(wc -l < "$nogit") ($nogit)"
+}
+
+# ============================================================================
+# distfiles — mirror plano del conjunto actual de fuentes
+# ============================================================================
+
+distfiles::sha256() {
+	sha256sum "$1" 2>/dev/null | awk '{print $1; exit}'
+}
+
+# distfiles::try URL PARTE — descarga (reanudable) a PARTE; 0 si ok
+distfiles::try() {
+	curl -fL --retry 2 --connect-timeout 15 --max-time "${DISTFILES_TIMEOUT:-300}" \
+		-C - -o "$2" "$1" 2>/dev/null
+}
+
+# distfiles::fetch_one OUT NAME ORIG URL HASH PKGVER SEED MIRRORS
+# Descarga NAME en OUT verificando HASH (si es sha256 de 64 hex; los
+# checksums de contenido "@" se aceptan sin verificar). Cadena: presente
+# → semilla → mirrors extra → upstream → repo-default (rescate) →
+# sources.voidlinux.org/<pkgver> (archivo). Imprime "NAME<TAB>origen" o nada.
+# ORIG es el nombre sin sufijo de conflicto: se usa para el hardlink
+# versioned/<pkgver>/<ORIG> (layout sin colisiones, como sources.voidlinux).
+distfiles::fetch_one() {
+	local out="$1" name="$2" orig="$3" url="$4" hash="$5" pkgver="$6" seed="$7" mirrors="$8"
+	local part="$out/.$name.part" sum cand label c m wl
+
+	local verifiable=false
+	if [ "${#hash}" -eq 64 ]; then
+		case "$hash" in *[!0-9a-fA-F]*) : ;; *) verifiable=true ;; esac
+	fi
+	if $verifiable; then wl="${hash,,}"; else wl=""; fi
+
+	check() {
+		[ -f "$1" ] || return 1
+		$verifiable || return 0
+		sum=$(distfiles::sha256 "$1")
+		[ "$sum" = "$wl" ]
+	}
+
+	install_link() {   # $1 = fichero fuente ya verificado
+		ln -f "$1" "$out/$name" 2>/dev/null || cp -f "$1" "$out/$name" || return 1
+		if [ -n "$wl" ]; then
+			mkdir -p "$out/by_sha256"
+			ln -f "$out/$name" "$out/by_sha256/${wl}_$name" 2>/dev/null || true
+		fi
+		if [ -n "$pkgver" ]; then
+			mkdir -p "$out/versioned/$pkgver"
+			ln -f "$out/$name" "$out/versioned/$pkgver/$orig" 2>/dev/null || true
+		fi
+		return 0
+	}
+
+	# 1) ya presente y válido
+	if [ -f "$out/$name" ] && check "$out/$name"; then
+		printf '%s\tpresente\n' "$name"
+		return 0
+	fi
+	# 2) semilla (hostdir/sources: plano o by_sha256)
+	if [ -n "$seed" ]; then
+		for cand in "$seed/$name" "$seed/by_sha256/${wl}_$name"; do
+			if [ -n "$wl" ] && [ -f "$cand" ] && check "$cand"; then
+				if install_link "$cand"; then
+					printf '%s\tsemilla\n' "$name"
+					return 0
+				fi
+			fi
+		done
+	fi
+	# 3) fuentes remotas, en orden
+	local -a cands=()
+	for m in $mirrors; do
+		m="${m%/}"
+		[ -n "$m" ] && cands+=("mirror"$'\t'"$m/$name")
+	done
+	cands+=("upstream"$'\t'"$url")
+	cands+=("void-rescate"$'\t'"https://repo-default.voidlinux.org/distfiles/$name")
+	if [ -n "$pkgver" ]; then
+		cands+=("void-archivo"$'\t'"https://sources.voidlinux.org/$pkgver/$name")
+	fi
+	for c in "${cands[@]}"; do
+		label="${c%%$'\t'*}"
+		cand="${c#*$'\t'}"
+		rm -f "$part"
+		if distfiles::try "$cand" "$part"; then
+			if check "$part"; then
+				mv -f "$part" "$out/$name.part-ok"
+				if install_link "$out/$name.part-ok"; then
+					rm -f "$out/$name.part-ok"
+					printf '%s\t%s\n' "$name" "$label"
+					return 0
+				fi
+				rm -f "$out/$name.part-ok"
+				return 1
+			fi
+			log::debug "checksum no válido desde $label: $cand"
+		fi
+	done
+	rm -f "$part"
+	return 1
+}
+
+# __fetch — interno para xargs -P: recibe "out US name US url US hash US
+# pkgver US seed US mirrors" (US = separador de unidad, \x1f) y deja el
+# resultado en stdout.
+cmd___fetch() {
+	local IFS=$'\037'
+	local out name orig url hash pkgver seed mirrors
+	read -r out name orig url hash pkgver seed mirrors <<< "$1"
+	[ -n "$out" ] || return 0
+	[ -n "$orig" ] || orig="$name"
+	distfiles::fetch_one "$out" "$name" "$orig" "$url" "$hash" "$pkgver" "$seed" "$mirrors"
+	return 0
+}
+
+usage_distfiles() {
+	cat <<EOF
+Uso: $(basename "$0") distfiles [opciones]
+
+Descarga a OUTDIR el conjunto actual de distfiles de los paquetes
+instalados, verificados con el checksum del template, en formato espejo
+plano: el nombre de fichero es el mismo que usa xbps-src (sintaxis
+url>nombre respetada), más un índice by_sha256/<sha256>_<fichero>
+compatible con hostdir/sources, más un árbol versioned/<paquete>-<versión>/
+sin colisiones (como sources.voidlinux.org). Los nombres planos que
+colisionan entre paquetes se guardan como <nombre>.<hash8> en el layout
+plano, pero siempre con su nombre canónico en versioned/.
+
+Orden de fuentes por fichero: ya-presente → semilla (-S) → mirrors extra
+(-M) → URL upstream → repo-default.voidlinux.org/distfiles (rescate) →
+sources.voidlinux.org/<pkg>-<version> (archivo). Los checksums de
+contenido ("@hash") se descargan sin verificar.
+
+El resultado es directamente usable por xbps-src:
+  XBPS_DISTFILES_FALLBACK="$PWD/void-distfiles"     (file://, requiere uchroot)
+  XBPS_DISTFILES_FALLBACK="https://host/distfiles"  (servido por nginx, etc.)
+
+Incremental: lo ya descargado y verificado no se redescarga; los fallos
+quedan en $STATE_DIR_DEFAULT/distfiles-failed.tsv y se reintentan con -r;
+-m N limita las descargas nuevas por pasada (pensado para cron).
+
+Opciones (corta y larga):
+  -c, --config FICHERO   Fichero de configuración adicional
+  -o, --outdir DIR       Destino (defecto: ./void-distfiles)
+  -d, --voidpkgs DIR     Raíz del clon de void-packages (defecto: pwd)
+  -p, --pkgdb RUTA       pkgdb de XBPS (defecto: /var/db/xbps/pkgdb-*.plist)
+  -m, --max N            Máx. descargas nuevas por pasada; 0 = ilimitado (50)
+  -j, --jobs N           Descargas en paralelo (4)
+  -S, --seed DIR         Directorio semilla (defecto: <voidpkgs>/hostdir/sources)
+  -M, --mirror URL       Mirror extra (repetible; URL base, layout plano)
+  -r, --retry            Reintentar los fallos cacheados
+  -t, --dry-run          No descargar, solo mostrar qué haría
+  -v, --verbose          Log detallado (debug)
+  -q, --quiet            Solo avisos y errores
+      --log-level NIVEL  debug | info | warn | error
+  -h, --help             Esta ayuda
+EOF
+	exit "${USAGE_EXIT:-1}"
+}
+
+distfiles::run() {
+	opts::normalize ":c:o:d:p:m:j:S:M:rtvqh" \
+		"config=c outdir=o voidpkgs=d pkgdb=p max=m jobs=j seed=S mirror=M retry=r dry-run=t verbose=v quiet=q help=h" \
+		"$@"
+	set -- "${OPTS[@]}"
+
+	local OPTIND=1 opt
+	local outdir="void-distfiles" max="${DISTFILES_MAX:-50}" jobs="${DISTFILES_JOBS:-4}"
+	local seed="${DISTFILES_SEED:-}" retry=false dry_run=false
+	local -a extra_mirrors=()
+	while getopts ":c:o:d:p:m:j:S:M:rtvqh" opt; do
+		case "$opt" in
+			c) OPT_CONF="$OPTARG" ;;
+			o) outdir="$OPTARG" ;;
+			d) export VOIDPKGS="$OPTARG" ;;
+			p) export PKGDB="$OPTARG" ;;
+			m) max="$OPTARG" ;;
+			j) jobs="$OPTARG" ;;
+			S) seed="$OPTARG" ;;
+			M) extra_mirrors+=("$OPTARG") ;;
+			r) retry=true ;;
+			t) dry_run=true ;;
+			v) LOG_LEVEL=debug ;;
+			q) LOG_LEVEL=warn ;;
+			h) USAGE_EXIT=0; usage_distfiles ;;
+			*) usage_distfiles ;;
+		esac
+	done
+	config::init
+	mkdir -p "$STATE_DIR"
+	deps::need awk curl sha256sum flock
+	case "$max" in '' | *[!0-9]*) die "-m/--max debe ser numérico" ;; esac
+	case "$jobs" in '' | *[!0-9]*) die "-j/--jobs debe ser numérico" ;; esac
+
+	exec 9>"$STATE_DIR/lock"
+	flock -n 9 || die "otra instancia de $(basename "$0") está en ejecución"
+
+	local voidpkgs="${VOIDPKGS:-$(pwd)}"
+	[ -d "$voidpkgs/srcpkgs" ] || die "no se encuentra srcpkgs en '$voidpkgs' (usa -d DIR o VOIDPKGS)"
+	if [ -z "${PKGDB:-}" ]; then
+		set -- /var/db/xbps/pkgdb-*.plist
+		[ -f "$1" ] || die "no se encontró pkgdb en /var/db/xbps/"
+		PKGDB="$1"
+	fi
+	if [ -z "$seed" ] && [ -d "$voidpkgs/hostdir/sources" ]; then
+		seed="$voidpkgs/hostdir/sources"
+		log::info "semilla: $seed (hostdir existente)"
+	fi
+	local mirrors="${DISTFILES_MIRRORS:-} ${extra_mirrors[*]}"
+	mkdir -p "$outdir"
+	export DISTFILES_TIMEOUT
+
+	log::info "distfiles: $voidpkgs (pkgdb: $PKGDB) → $outdir"
+	DISTFILES_TMP=$(mktemp -d)
+	trap 'rm -rf "$DISTFILES_TMP"' EXIT
+	local tmp="$DISTFILES_TMP"
+	list::collect "$voidpkgs" "$PKGDB" > "$tmp/sources.tsv"
+	log::info "paquetes: $(wc -l < "$tmp/sources.tsv") (+$MISSING_PKGS sin template local)"
+
+	# caches de estado
+	local done_f="$STATE_DIR/distfiles-done.tsv" failed_f="$STATE_DIR/distfiles-failed.tsv"
+	touch "$done_f"
+	declare -A DONE=() FAILED=()
+	local f h s u r
+	while IFS=$'\t' read -r f h s; do
+		[ -n "$f" ] && DONE["$f"]="$h|$s"
+	done < "$done_f"
+	if [ -f "$failed_f" ]; then
+		while IFS=$'\t' read -r u h r; do
+			[ -n "$u" ] && FAILED["$u|$h"]=1
+		done < "$failed_f"
+	fi
+
+	# lista de trabajo: url <TAB> nombre <TAB> hash(-) <TAB> pkg <TAB> version(-)
+	awk -F'\t' '{
+		n = split($3, uu, " "); l = split($6, ll, " "); c = split($7, hh, " ")
+		for (i = 1; i <= n; i++) {
+			if (uu[i] == "" || ll[i] == "") continue
+			printf "%s\t%s\t%s\t%s\t%s\n", uu[i], ll[i], (i <= c && hh[i] != "" ? hh[i] : "-"), $1, ($5 != "" ? $5 : "-")
+		}
+	}' "$tmp/sources.tsv" > "$tmp/wanted.tsv"
+
+	# plan: dedupe, conflictos de nombre, presentes, fallos cacheados, límite -m
+	local joblist="$tmp/jobs"
+	: > "$joblist"
+	local url name hash pkg ver key size rec pkgver
+	declare -A SEEN=() NAME_HASH=() JOB_URL=() JOB_HASH=()
+	local c_have=0 c_skipfail=0 c_pending=0 c_conflict=0 considered=0
+	while IFS=$'\t' read -r url name hash pkg ver; do
+		[ -n "$url" ] || continue
+		[ "$hash" = "-" ] && hash=""
+		[ "$ver" = "-" ] && ver=""
+		key="$name|$hash"
+		[ -n "${SEEN[$key]:-}" ] && continue
+		SEEN["$key"]=1
+		# conflicto: mismo nombre local con hash distinto → variante .<hash8>
+		orig="$name"
+		if [ -n "${NAME_HASH[$name]:-}" ] && [ "${NAME_HASH[$name]}" != "$hash" ]; then
+			if [ "${#hash}" -eq 64 ]; then
+				name="$name.${hash:0:8}"
+				c_conflict=$((c_conflict + 1))
+				log::warn "conflicto de nombre: '$key' se guardará como '$name'"
+			fi
+		else
+			NAME_HASH["$name"]="$hash"
+		fi
+		JOB_URL["$name"]="$url"
+		JOB_HASH["$name"]="$hash"
+		# presente y verificado (por cache done; sin rehashear)
+		if [ -f "$outdir/$name" ]; then
+			size=$(stat -c %s "$outdir/$name" 2>/dev/null || echo 0)
+			rec="${DONE[$name]:-}"
+			if [ -n "$rec" ] && [ "${rec#*|}" = "$size" ]; then
+				if [ -z "$hash" ] || [ "${rec%%|*}" = "$hash" ]; then
+					c_have=$((c_have + 1))
+					continue
+				fi
+			fi
+			# sin registro previo: verificar una sola vez
+			if [ -n "$hash" ] && [ "$(distfiles::sha256 "$outdir/$name")" = "${hash,,}" ]; then
+				printf '%s\t%s\t%s\n' "$name" "$hash" "$size" >> "$done_f"
+				DONE["$name"]="$hash|$size"
+				c_have=$((c_have + 1))
+				continue
+			fi
+		fi
+		if ! $retry && [ -n "${FAILED[$url|$hash]:-}" ]; then
+			c_skipfail=$((c_skipfail + 1))
+			continue
+		fi
+		if [ "$max" != "0" ] && [ "$considered" -ge "$max" ]; then
+			c_pending=$((c_pending + 1))
+			continue
+		fi
+		considered=$((considered + 1))
+		pkgver=""
+		[ -n "$ver" ] && pkgver="$pkg-$ver"
+		if $dry_run; then
+			log::info "descargaría: $name <- $url"
+		else
+			printf '%s\037%s\037%s\037%s\037%s\037%s\037%s\037%s\n' \
+				"$outdir" "$name" "$orig" "$url" "$hash" "$pkgver" "$seed" "$mirrors" >> "$joblist"
+		fi
+	done < "$tmp/wanted.tsv"
+
+	if $dry_run; then
+		log::info "dry-run: presentes=$c_have a-descargar=$considered pendientes=$c_pending fallidos-cache=$c_skipfail conflictos=$c_conflict"
+		return 0
+	fi
+
+	# descarga (paralela con xargs; una línea de joblist por invocación)
+	local results="$tmp/results"
+	: > "$results"
+	if [ -s "$joblist" ]; then
+		log::info "descargando $(wc -l < "$joblist") ficheros (jobs=$jobs, timeout=${DISTFILES_TIMEOUT}s)"
+		if [ "$jobs" -gt 1 ] && command -v xargs >/dev/null; then
+			xargs -r -a "$joblist" -d '\n' -n 1 -P "$jobs" \
+				bash "$0" __fetch >> "$results" || true
+		else
+			while IFS= read -r spec; do
+				cmd___fetch "$spec" >> "$results"
+			done < "$joblist"
+		fi
+	fi
+
+	# consolidar: éxitos → done.tsv; el resto → failed.tsv
+	declare -A GOT=() OKKEY=()
+	local c_up=0 c_mir=0 c_res=0 c_arch=0 c_sem=0 c_fail=0
+	while IFS=$'\t' read -r name label; do
+		[ -n "$name" ] || continue
+		GOT["$name"]=1
+		OKKEY["${JOB_URL[$name]:-}|${JOB_HASH[$name]:-}"]=1
+		case "$label" in
+			upstream) c_up=$((c_up + 1)) ;;
+			mirror) c_mir=$((c_mir + 1)) ;;
+			void-rescate) c_res=$((c_res + 1)) ;;
+			void-archivo) c_arch=$((c_arch + 1)) ;;
+			semilla) c_sem=$((c_sem + 1)) ;;
+			presente) c_have=$((c_have + 1)) ;;
+		esac
+		size=$(stat -c %s "$outdir/$name" 2>/dev/null || echo 0)
+		printf '%s\t%s\t%s\n' "$name" "${JOB_HASH[$name]:-}" "$size" >> "$done_f"
+	done < "$results"
+	: > "$failed_f.tmp"
+	while IFS= read -r spec; do
+		IFS=$'\037' read -r _out name _orig _url _hash _pv _sd _m <<< "$spec"
+		if [ -z "${GOT[$name]:-}" ]; then
+			c_fail=$((c_fail + 1))
+			printf '%s\t%s\tno encontrado en ninguna fuente\n' "${JOB_URL[$name]:-}" "${JOB_HASH[$name]:-}" >> "$failed_f.tmp"
+		fi
+	done < "$joblist"
+	# conservar los fallos previos, salvo los resueltos en esta tanda
+	while IFS=$'\t' read -r u h r; do
+		[ -n "$u" ] || continue
+		[ -n "${OKKEY[$u|$h]:-}" ] && continue
+		printf '%s\t%s\t%s\n' "$u" "$h" "$r" >> "$failed_f.tmp"
+	done < <([ -f "$failed_f" ] && cat "$failed_f" || true)
+	mv "$failed_f.tmp" "$failed_f"
+
+	log::info "resumen: presentes=$c_have semilla=$c_sem upstream=$c_up mirror=$c_mir void-rescate=$c_res void-archivo=$c_arch fallidos=$c_fail pendientes=$c_pending fallidos-cache=$c_skipfail conflictos=$c_conflict"
+	if [ "$c_fail" -gt 0 ]; then
+		log::warn "ficheros sin obtener: $failed_f (reintentar con -r)"
+		exit 1
+	fi
+	if [ "$c_pending" -gt 0 ]; then
+		log::info "pendientes por límite -m $max: se descargarán en próximas ejecuciones"
+	fi
+	log::info "para xbps-src: XBPS_DISTFILES_FALLBACK=\"$outdir\" (file://) o sírvelo por HTTP y usa su URL"
+	return 0
+}
+
+# ============================================================================
+# subcomandos: archive y status
+# ============================================================================
+
+usage_archive() {
+	cat <<EOF
+Uso: $(basename "$0") archive [opciones]
+
+Crea como mirrors en Gitea los repos git de las fuentes de los paquetes
+instalados que aún no existan. Incremental: consulta los repos existentes en
+el servidor y solo crea los que faltan (los fallos previos no se reintentan
+salvo -r). Pensado para ejecutarse periódicamente (cron).
+
+Opciones (corta y larga):
+  -c, --config FICHERO    Fichero de configuración adicional
+  -u, --url URL           URL base de Gitea
+  -o, --owner OWNER       Owner destino (defecto: \$ARCHIVE_OWNER o el usuario del token)
+  -m, --max N             Máx. mirrors nuevos por ejecución; 0 = ilimitado (defecto: $MAX_DEFAULT)
+  -d, --voidpkgs DIR      Raíz del clon de void-packages
+  -P, --public            Mirrors públicos (por defecto son privados)
+  -t, --dry-run           Modo prueba: no crea nada, solo muestra qué haría
+  -r, --retry             Reintentar los fallos registrados en $STATE_DIR_DEFAULT/failed.tsv
+  -f, --force             Si un repo ya existe en el owner destino como mirror
+                          con otra URL de origen, eliminarlo y volver a crearlo
+                          con la URL esperada (nunca borra repos que no sean
+                          mirrors)
+  -v, --verbose           Log detallado (debug)
+  -q, --quiet             Solo avisos y errores
+      --log-level NIVEL   debug | info | warn | error
+  -h, --help              Esta ayuda
+
+Token: user:read + repository:write (+ organization:read si -o es una org).
+Resolución pkg→repo: overrides → homepage (git ls-remote) → cascada
+offline (gramática+tablas) → APIs de registro; ver "help list" (-W).
+Verificación: los repos ya existentes en el destino deben ser mirrors del
+origen esperado (original_url); si difieren, se registra conflicto y el
+script termina con exit 1 (con -f, en cambio, se eliminan y se vuelven a
+crear). Redirecciones: cada URL se comprueba con curl y, si redirige (HTTP
+3xx), se usa la URL final como origen del mirror.
+EOF
+	exit "${USAGE_EXIT:-1}"
+}
+
+# archive::prepare — valida voidpkgs/pkgdb, genera TSV y extrae repos; deja
+# ARCHIVE_TMP/TSV_FILE/REPOS_FILE listos. El cleanup de ARCHIVE_TMP se hace
+# con trap EXIT en archive::run/status::run (los ficheros deben sobrevivir a
+# esta función).
+archive::prepare() {
+	voidpkgs="${VOIDPKGS:-$(pwd)}"
+	[ -d "$voidpkgs/srcpkgs" ] || die "no se encuentra srcpkgs en '$voidpkgs' (usa -d DIR o VOIDPKGS)"
+	if [ -z "${PKGDB:-}" ]; then
+		set -- /var/db/xbps/pkgdb-*.plist
+		[ -f "$1" ] || die "no se encontró pkgdb en /var/db/xbps/"
+		PKGDB="$1"
+	fi
+
+	log::debug "extrayendo fuentes de $voidpkgs"
+	ARCHIVE_TMP=$(mktemp -d)
+	list::collect "$voidpkgs" "$PKGDB" > "$ARCHIVE_TMP/sources.tsv"
+	plan::extract < "$ARCHIVE_TMP/sources.tsv" > "$ARCHIVE_TMP/plan.tsv"
+	resolve::run "$ARCHIVE_TMP/plan.tsv" "$ARCHIVE_TMP/repos.tsv" "$STATE_DIR/nogit.tsv"
+
+	TSV_FILE="$ARCHIVE_TMP/sources.tsv"
+	REPOS_FILE="$ARCHIVE_TMP/repos.tsv"
+}
+
+archive::load_failed() {
+	FAILED_FILE="$STATE_DIR/failed.tsv"
+	declare -gA FAILED=()
+	declare -gA FAILED_INFO=()
+	if [ -f "$FAILED_FILE" ]; then
+		while IFS=$'\t' read -r canon name http msg; do
+			[ -n "$canon" ] || continue
+			FAILED["$canon"]=1
+			FAILED_INFO["$canon"]="$name | HTTP $http | $msg"
+		done < "$FAILED_FILE"
+		log::debug "fallos cacheados: ${#FAILED[@]}"
+	fi
+}
+
+archive::save_failed() {
+	: > "$FAILED_FILE.tmp"
+	local canon
+	for canon in "${!FAILED[@]}"; do
+		printf '%s\t%s\n' "$canon" "${FAILED_INFO[$canon]:-}" >> "$FAILED_FILE.tmp"
+	done
+	mv "$FAILED_FILE.tmp" "$FAILED_FILE"
+}
+
+archive::run() {
+	opts::normalize ":c:u:o:m:d:PvfhtreLq" \
+		"config=c url=u owner=o max=m voidpkgs=d public=P force=f dry-run=t retry=r verbose=v quiet=q help=h" \
+		"$@"
+	set -- "${OPTS[@]}"
+
+	local OPTIND=1 opt owner="" max="${ARCHIVE_MAX:-$MAX_DEFAULT}"
+	local dry_run=false retry=false private="${ARCHIVE_PRIVATE:-true}" force=false
+	while getopts ":c:u:o:m:d:PvfhtreLq" opt; do
+		case "$opt" in
+			c) OPT_CONF="$OPTARG" ;;
+			u) export GITEA_URL="$OPTARG" ;;
+			o) owner="$OPTARG" ;;
+			m) max="$OPTARG" ;;
+			d) export VOIDPKGS="$OPTARG" ;;
+			P) private=false ;;
+			f) force=true ;;
+			t) dry_run=true ;;
+			r) retry=true ;;
+			v) LOG_LEVEL=debug ;;
+			q) LOG_LEVEL=warn ;;
+			h) USAGE_EXIT=0; usage_archive ;;
+			*) usage_archive ;;
+		esac
+	done
+	config::init
+	mkdir -p "$STATE_DIR"
+	deps::need curl jq flock
+
+	# Lock: evita pasadas solapadas (cron + manual)
+	exec 9>"$STATE_DIR/lock"
+	flock -n 9 || die "otra instancia de $(basename "$0") está en ejecución"
+
+	local interval="${ARCHIVE_INTERVAL:-$INTERVAL_DEFAULT}"
+	case "$max" in '' | *[!0-9]*) die "-m/--max debe ser numérico" ;; esac
+	case "$private" in true | false) : ;; *) die "ARCHIVE_PRIVATE debe ser true o false" ;; esac
+
+	archive::prepare
+	archive::load_failed
+	trap 'rm -rf "$ARCHIVE_TMP"' EXIT
+
+	gitea::auth
+	owner="${owner:-${ARCHIVE_OWNER:-$GITEA_LOGIN}}"
+
+	log::info "pasada de archivado: owner=$owner max=${max} intervalo=$interval privado=$private force=$force dry-run=$dry_run"
+
+	declare -A in_dest=() elsewhere=()
+	while IFS=$'\t' read -r r_owner r_name; do
+		[ -n "$r_owner" ] || continue
+		if [ "$r_owner" = "$owner" ]; then
+			in_dest["$r_name"]=1
+		else
+			elsewhere["$r_name"]="${elsewhere["$r_name"]:+${elsewhere["$r_name"]},}$r_owner"
+		fi
+	done < <(gitea::list_repos)
+	log::info "repos en Gitea: ${#in_dest[@]} en '$owner', ${#elsewhere[@]} nombres en otros owners"
+
+	local total=0 skip_exist=0 skip_failed=0 pending=0 created=0 errors=0 considered=0 recreated=0 url_errors=0
+	local canon name pkgs mirror_url recreate=false t0
+	while IFS=$'\t' read -r canon name pkgs; do
+		[ -n "$canon" ] || continue
+		total=$((total + 1))
+		# Resolver redirecciones: la URL final es el origen del mirror
+		mirror_url=$(url::resolve "$canon")
+		recreate=false
+		if [ -n "${in_dest[$name]:-}" ]; then
+			# Existe en destino: el origen del mirror debe coincidir
+			if gitea::verify_mirror "$owner" "$name" "$mirror_url"; then
+				skip_exist=$((skip_exist + 1))
+				continue
+			fi
+			# -f: solo se tocan los repos que SÍ son mirrors con otra URL de
+			# origen; los que no son mirrors se denuncian como conflicto
+			if ! $force || [ "$GITEA_IS_MIRROR" != true ]; then
+				url_errors=$((url_errors + 1))
+				continue
+			fi
+			recreate=true
+			if $dry_run; then
+				log::info "se eliminaría y volvería a crear: $owner/$name (apunta a '$GITEA_ORIGIN', esperado '$mirror_url')"
+				recreated=$((recreated + 1))
+				continue
+			fi
+			log::info "origen erróneo: $owner/$name apunta a '$GITEA_ORIGIN' (esperado '$mirror_url'); eliminando mirror"
+			gitea::api DELETE "/repos/$owner/$name"
+			case "$GITEA_HTTP" in
+				204)
+					log::info "eliminado: $owner/$name"
+					unset "FAILED[$canon]"
+					;;
+				*)
+					errors=$((errors + 1))
+					FAILED["$canon"]=1
+					FAILED_INFO["$canon"]="$name | HTTP $GITEA_HTTP | $(gitea::errmsg)"
+					log::error "fallo eliminando $owner/$name: HTTP $GITEA_HTTP $(gitea::errmsg)"
+					continue
+					;;
+			esac
+		fi
+		[ -n "${elsewhere[$name]:-}" ] && log::debug "$name existe en: ${elsewhere[$name]}"
+		if [ "$recreate" != true ]; then
+			if ! $retry && [ -n "${FAILED[$canon]:-}" ]; then
+				log::debug "fallido en cache: $canon"
+				skip_failed=$((skip_failed + 1))
+				continue
+			fi
+			if [ "$max" != "0" ] && [ "$considered" -ge "$max" ]; then
+				pending=$((pending + 1))
+				continue
+			fi
+			considered=$((considered + 1))
+		fi
+
+		local desc="Mirror de $mirror_url — fuentes void: $pkgs"
+		desc=${desc:0:200}
+		local payload
+		payload=$(jq -n \
+			--arg clone_addr "$mirror_url" --arg repo_name "$name" \
+			--arg repo_owner "$owner" --arg description "$desc" \
+			--arg mirror_interval "$interval" --argjson private "$private" \
+			'{clone_addr:$clone_addr, repo_name:$repo_name, repo_owner:$repo_owner,
+			  description:$description, mirror_interval:$mirror_interval,
+			  private:$private, mirror:true, service:"git"}')
+
+		if $dry_run; then
+			log::info "se crearía: $owner/$name <- $mirror_url"
+			created=$((created + 1))
+			continue
+		fi
+
+		if [ "$recreate" = true ]; then
+			log::info "recreando: $owner/$name <- $mirror_url"
+		else
+			log::info "creando: $owner/$name <- $mirror_url"
+		fi
+		t0=$SECONDS
+		gitea::api POST /repos/migrate "$payload"
+		case "$GITEA_HTTP" in
+			201)
+				created=$((created + 1))
+				if [ "$recreate" = true ]; then
+					recreated=$((recreated + 1))
+				fi
+				printf '%s\t%s\t%s\n' "$(date -u +%FT%TZ)" "$mirror_url" "$name" >> "$STATE_DIR/created.log"
+				unset "FAILED[$canon]"
+				log::info "creado: $owner/$name ($((SECONDS - t0))s)"
+				;;
+			409)
+				skip_exist=$((skip_exist + 1))
+				log::warn "conflicto: $owner/$name ya existía (HTTP 409)"
+				;;
+			*)
+				errors=$((errors + 1))
+				FAILED["$canon"]=1
+				FAILED_INFO[$canon]="$name | HTTP $GITEA_HTTP | $(gitea::errmsg)"
+				log::error "fallo creando $owner/$name <- $canon: HTTP $GITEA_HTTP $(gitea::errmsg)"
+				;;
+		esac
+	done < "$REPOS_FILE"
+
+	if ! $dry_run; then
+		archive::save_failed
+	fi
+
+	local nogit_n=0
+	[ -f "$STATE_DIR/nogit.tsv" ] && nogit_n=$(wc -l < "$STATE_DIR/nogit.tsv")
+
+	log::info "resumen: candidatos=$total existentes=$skip_exist creados=$created recreados=$recreated errores=$errors conflictos-origen=$url_errors fallidos-cache=$skip_failed pendientes=$pending (fuentes sin repo git: $nogit_n)"
+	if ! $retry && [ "$skip_failed" -gt 0 ]; then
+		log::info "reintentar fallos con: $(basename "$0") archive -r"
+	fi
+	if [ "$pending" -gt 0 ]; then
+		log::info "pendientes por límite -m $max: $pending — se crearán en próximas ejecuciones"
+	fi
+	if ! $dry_run && [ "$created" -gt 0 ]; then
+		log::info "registro de creaciones: $STATE_DIR/created.log"
+	fi
+	if [ $((errors + url_errors)) -gt 0 ]; then
+		log::error "pasada terminada con errores (HTTP: $errors, conflictos de origen: $url_errors)"
+		exit 1
+	fi
+}
+
+usage_status() {
+	cat <<EOF
+Uso: $(basename "$0") status [opciones]
+
+Muestra el estado del archivo: repos candidatos, existentes en Gitea,
+pendientes de crear y fallos registrados. No crea ni modifica nada.
+
+Opciones (corta y larga):
+  -c, --config FICHERO  Fichero de configuración adicional
+  -u, --url URL         URL base de Gitea
+  -o, --owner OWNER     Owner destino (defecto: \$ARCHIVE_OWNER o el usuario del token)
+  -d, --voidpkgs DIR    Raíz del clon de void-packages
+  -n, --num N           Nº de pendientes a listar (defecto: 20)
+  -v, --verbose         Log detallado (debug)
+  -q, --quiet           Solo avisos y errores
+      --log-level NIVEL debug | info | warn | error
+  -h, --help            Esta ayuda
+EOF
+	exit "${USAGE_EXIT:-1}"
+}
+
+status::run() {
+	opts::normalize ":c:u:o:d:n:vqh" \
+		"config=c url=u owner=o voidpkgs=d num=n verbose=v quiet=q help=h" \
+		"$@"
+	set -- "${OPTS[@]}"
+
+	local OPTIND=1 opt owner="" show=20
+	while getopts ":c:u:o:d:n:vqh" opt; do
+		case "$opt" in
+			c) OPT_CONF="$OPTARG" ;;
+			u) export GITEA_URL="$OPTARG" ;;
+			o) owner="$OPTARG" ;;
+			d) export VOIDPKGS="$OPTARG" ;;
+			n) show="$OPTARG" ;;
+			v) LOG_LEVEL=debug ;;
+			q) LOG_LEVEL=warn ;;
+			h) USAGE_EXIT=0; usage_status ;;
+			*) usage_status ;;
+		esac
+	done
+	config::init
+	mkdir -p "$STATE_DIR"
+	deps::need curl jq
+
+	archive::prepare
+	archive::load_failed
+	trap 'rm -rf "$ARCHIVE_TMP"' EXIT
+
+	gitea::auth
+	owner="${owner:-${ARCHIVE_OWNER:-$GITEA_LOGIN}}"
+
+	declare -A in_dest=() elsewhere=()
+	while IFS=$'\t' read -r r_owner r_name; do
+		[ -n "$r_owner" ] || continue
+		if [ "$r_owner" = "$owner" ]; then
+			in_dest["$r_name"]=1
+		else
+			elsewhere["$r_name"]="${elsewhere["$r_name"]:+${elsewhere["$r_name"]},}$r_owner"
+		fi
+	done < <(gitea::list_repos)
+	log::info "Owner: $owner @ $GITEA_URL (${#in_dest[@]} repos, ${#elsewhere[@]} nombres en otros owners)"
+
+	local total=0 skip_exist=0 skip_failed=0 pending=0 in_other=0 conflict=0 i=0
+	local canon name pkgs mirror_url
+	while IFS=$'\t' read -r canon name pkgs; do
+		[ -n "$canon" ] || continue
+		total=$((total + 1))
+		# Resolver redirecciones: la URL final es el origen del mirror
+		mirror_url=$(url::resolve "$canon")
+		if [ -n "${in_dest[$name]:-}" ]; then
+			skip_exist=$((skip_exist + 1))
+			if ! gitea::verify_mirror "$owner" "$name" "$mirror_url"; then
+				conflict=$((conflict + 1))
+			fi
+		elif [ -n "${elsewhere[$name]:-}" ]; then
+			in_other=$((in_other + 1))
+		elif [ -n "${FAILED[$canon]:-}" ]; then
+			skip_failed=$((skip_failed + 1))
+		else
+			pending=$((pending + 1))
+			if [ $i -lt "$show" ]; then
+				printf '  pendiente: %-40s <- %s\n' "$name" "$canon" >&2
+				i=$((i + 1))
+			fi
+		fi
+	done < "$REPOS_FILE"
+
+	local nogit_n=0
+	[ -f "$STATE_DIR/nogit.tsv" ] && nogit_n=$(wc -l < "$STATE_DIR/nogit.tsv")
+	log::info "repos candidatos: $total | en Gitea ($owner): $skip_exist (conflictos de origen: $conflict) | en otras orgs: $in_other | pendientes: $pending | fallidos: $skip_failed"
+	log::info "fuentes sin repo git: $nogit_n ($STATE_DIR/nogit.tsv)"
+	if [ "$pending" -gt "$show" ]; then
+		log::debug "mostrando $show de $pending pendientes"
+	fi
+	return 0
+}
+
+# ============================================================================
+# main
+# ============================================================================
+
+main() {
+	[ $# -ge 1 ] || usage_general
+	local cmd="$1"
+	shift
+
+	case "$cmd" in
+		__probe) cmd___probe "$@" ;;
+		__fetch) cmd___fetch "$@" ;;
+		list) list::run "$@" ;;
+		distfiles) distfiles::run "$@" ;;
+		mirror) mirror::run "$@" ;;
+		archive) archive::run "$@" ;;
+		status) status::run "$@" ;;
+		help | -h | --help)
+			USAGE_EXIT=0
+			case "${1-}" in
+				list) usage_list ;;
+				mirror) usage_mirror ;;
+				distfiles) usage_distfiles ;;
+				archive) usage_archive ;;
+				status) usage_status ;;
+				*) usage_general ;;
+			esac
+			;;
+		*) usage_general ;;
+	esac
+}
+
+# log::write necesita LOG_LEVEL definido incluso antes de config::init
+LOG_LEVEL="${LOG_LEVEL:-info}"
+
+main "$@"
