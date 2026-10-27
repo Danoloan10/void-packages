@@ -1,0 +1,15 @@
+# Template file for 'python3-pydantic-ai-slim'
+pkgname=python3-pydantic-ai-slim
+version=2.61.0
+revision=1
+build_style=python3-pep517
+hostmakedepends="hatchling python3-uv-dynamic-versioning"
+depends="python3-anyio python3-genai-prices python3-griffelib python3-httpx2
+ python3-opentelemetry-api python3-pydantic python3-pydantic-graph
+ python3-typing-inspection"
+short_desc="Agent framework for GenAI, without provider dependencies"
+maintainer="Danolo Alcnom <danolo@danoloan.es>"
+license="MIT"
+homepage="https://github.com/pydantic/pydantic-ai"
+distfiles="${PYPI_SITE}/p/pydantic-ai-slim/pydantic_ai_slim-${version}.tar.gz"
+checksum=fe134b7fb8c65ca1e102bcd4c46bd8253866423f9a639ba7ed2341b6eb34b8f2
