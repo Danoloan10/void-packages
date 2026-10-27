@@ -1,0 +1,14 @@
+# Template file for 'python3-openinference-instrumentation'
+pkgname=python3-openinference-instrumentation
+version=0.1.72
+revision=1
+build_style=python3-pep517
+hostmakedepends="hatchling"
+depends="python3-openinference-semantic-conventions python3-opentelemetry-api
+ python3-opentelemetry-sdk python3-wrapt"
+short_desc="OpenInference instrumentation base library for LLM tracing"
+maintainer="Danolo Alcnom <danolo@danoloan.es>"
+license="Apache-2.0"
+homepage="https://github.com/Arize-ai/openinference/tree/main/python/openinference-instrumentation"
+distfiles="${PYPI_SITE}/o/openinference-instrumentation/openinference_instrumentation-${version}.tar.gz"
+checksum=4470a316dcb279aff45c2368e16d76ec43b2f46985ee2a4dab183b448c1bc18b
