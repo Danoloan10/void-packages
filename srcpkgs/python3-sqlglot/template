@@ -1,0 +1,13 @@
+# Template file for 'python3-sqlglot'
+pkgname=python3-sqlglot
+version=30.21.0
+revision=1
+build_style=python3-pep517
+hostmakedepends="python3-setuptools python3-setuptools_scm"
+depends="python3"
+short_desc="SQL parser, transpiler and optimizer"
+maintainer="Danolo Alcnom <danolo@danoloan.es>"
+license="MIT"
+homepage="https://github.com/tobymao/sqlglot"
+distfiles="${PYPI_SITE}/s/sqlglot/sqlglot-${version}.tar.gz"
+checksum=6787ac202a3adc0e25434f1512370a655e51cb3de8c792544de5f6ff9c618d25
