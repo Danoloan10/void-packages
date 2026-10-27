@@ -1,0 +1,13 @@
+# Template file for 'python3-cross-web'
+pkgname=python3-cross-web
+version=0.7.0
+revision=1
+build_style=python3-pep517
+hostmakedepends="hatchling"
+depends="python3-typing_extensions"
+short_desc="Universal cross-framework web request and response interface"
+maintainer="Danolo Alcnom <danolo@danoloan.es>"
+license="MIT"
+homepage="https://github.com/usecross/cross-web"
+distfiles="${PYPI_SITE}/c/cross-web/cross_web-${version}.tar.gz"
+checksum=15fbc8b9a824a055db8127fd6e43e0773074f620fdecb6b2b587d3d0a2bdd459
