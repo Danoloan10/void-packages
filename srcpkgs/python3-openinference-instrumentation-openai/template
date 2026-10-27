@@ -1,0 +1,17 @@
+# Template file for 'python3-openinference-instrumentation-openai'
+pkgname=python3-openinference-instrumentation-openai
+version=0.1.66
+revision=1
+build_style=python3-pep517
+hostmakedepends="hatchling"
+depends="python3-anyio python3-openinference-instrumentation
+ python3-openinference-semantic-conventions python3-opentelemetry-api
+ python3-opentelemetry-instrumentation
+ python3-opentelemetry-semantic-conventions python3-typing_extensions
+ python3-wrapt"
+short_desc="OpenInference instrumentation for the OpenAI SDK"
+maintainer="Danolo Alcnom <danolo@danoloan.es>"
+license="Apache-2.0"
+homepage="https://github.com/Arize-ai/openinference/tree/main/python/instrumentation/openinference-instrumentation-openai"
+distfiles="${PYPI_SITE}/o/openinference-instrumentation-openai/openinference_instrumentation_openai-${version}.tar.gz"
+checksum=2c39ffd053c4105fe9b96ad0f8a3884cbd949ee5b1a3ad9b20798fb9733f3bb2
