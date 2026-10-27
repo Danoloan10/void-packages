@@ -1,0 +1,16 @@
+# Template file for 'python3-arize-phoenix-evals'
+pkgname=python3-arize-phoenix-evals
+version=3.9.4
+revision=1
+build_style=python3-pep517
+hostmakedepends="hatchling"
+depends="python3-jsonpath-ng python3-openinference-instrumentation
+ python3-openinference-semantic-conventions python3-opentelemetry-api
+ python3-pandas python3-pydantic python3-pystache python3-tqdm
+ python3-typing_extensions"
+short_desc="LLM evaluation tooling for Arize Phoenix"
+maintainer="Danolo Alcnom <danolo@danoloan.es>"
+license="Elastic-2.0"
+homepage="https://github.com/Arize-ai/phoenix/tree/main/packages/phoenix-evals"
+distfiles="${PYPI_SITE}/a/arize-phoenix-evals/arize_phoenix_evals-${version}.tar.gz"
+checksum=29bd61b6a975f8a32b563acaa7b54f2733042fa660e2fe76d424a41b224794c2
