@@ -1,0 +1,18 @@
+# Template file for 'python3-aioitertools'
+pkgname=python3-aioitertools
+version=0.13.0
+revision=1
+build_style=python3-pep517
+hostmakedepends="python3-flit_core"
+depends="python3"
+short_desc="itertools and builtins for AsyncIO and mixed iterables"
+maintainer="Danolo Alcnom <danolo@danoloan.es>"
+license="MIT"
+homepage="https://github.com/omnilib/aioitertools"
+distfiles="${PYPI_SITE}/a/aioitertools/aioitertools-${version}.tar.gz"
+checksum=620bd241acc0bbb9ec819f1ab215866871b4bbd1f73836a55f799200ee86950c
+
+post_patch() {
+	# Void's flit_core is newer than the upper bound upstream pins
+	vsed -i -e 's/flit_core >=3.11,<4/flit_core >=3.11/' pyproject.toml
+}
