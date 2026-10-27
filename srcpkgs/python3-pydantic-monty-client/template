@@ -1,0 +1,15 @@
+# Template file for 'python3-pydantic-monty-client'
+pkgname=python3-pydantic-monty-client
+version=1.1.0
+revision=1
+build_style=python3-pep517
+build_helper="rust"
+hostmakedepends="maturin cargo"
+makedepends="rust-std python3"
+depends="python3-typing_extensions"
+short_desc="Client half of the Monty Python sandbox for Pydantic"
+maintainer="Danolo Alcnom <danolo@danoloan.es>"
+license="MIT"
+homepage="https://github.com/pydantic/monty"
+distfiles="${PYPI_SITE}/p/pydantic-monty-client/pydantic_monty_client-${version}.tar.gz"
+checksum=cb21da6e4e25d52387b49d196aa6388585f3856c04c7f5abd1129c422238638c
