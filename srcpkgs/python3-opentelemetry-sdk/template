@@ -1,0 +1,18 @@
+# Template file for 'python3-opentelemetry-sdk'
+pkgname=python3-opentelemetry-sdk
+version=1.45.1
+revision=1
+build_style=python3-pep517
+hostmakedepends="hatchling"
+depends="python3-opentelemetry-api python3-opentelemetry-semantic-conventions
+ python3-typing_extensions"
+short_desc="OpenTelemetry Python SDK"
+maintainer="Danolo Alcnom <danolo@danoloan.es>"
+license="Apache-2.0"
+homepage="https://github.com/open-telemetry/opentelemetry-python"
+distfiles="${PYPI_SITE}/o/opentelemetry-sdk/opentelemetry_sdk-${version}.tar.gz"
+checksum=63d24a6ca645019a631e6a51999c73e93adcac1196ca640b8ae78a7cc4762bf3
+
+post_install() {
+	vlicense LICENSE
+}
