@@ -1,0 +1,13 @@
+# Template file for 'python3-authlib'
+pkgname=python3-authlib
+version=1.9.1
+revision=1
+build_style=python3-pep517
+hostmakedepends="python3-setuptools python3-wheel"
+depends="python3-cryptography python3-joserfc"
+short_desc="Client and server side OAuth and JOSE for Python"
+maintainer="Danolo Alcnom <danolo@danoloan.es>"
+license="BSD-3-Clause"
+homepage="https://github.com/authlib/authlib"
+distfiles="${PYPI_SITE}/a/authlib/authlib-${version}.tar.gz"
+checksum=5c7d9848f47cac340f060f76ae0bc09b59f5c8e89cc1bb032d4370a0c55b5974
