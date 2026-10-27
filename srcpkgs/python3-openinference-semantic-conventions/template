@@ -1,0 +1,13 @@
+# Template file for 'python3-openinference-semantic-conventions'
+pkgname=python3-openinference-semantic-conventions
+version=0.1.42
+revision=1
+build_style=python3-pep517
+hostmakedepends="hatchling"
+depends="python3"
+short_desc="OpenInference semantic conventions for LLM tracing"
+maintainer="Danolo Alcnom <danolo@danoloan.es>"
+license="Apache-2.0"
+homepage="https://github.com/Arize-ai/openinference/tree/main/python/semantic-conventions"
+distfiles="${PYPI_SITE}/o/openinference-semantic-conventions/openinference_semantic_conventions-${version}.tar.gz"
+checksum=d64c37a910b6212d097954b13cd50c551a0b935b53627fda8dc51b278d34856d
