@@ -1,7 +1,7 @@
 # Template file for 'python3-SQLAlchemy2'
 pkgname=python3-SQLAlchemy2
-version=2.0.42
-revision=2
+version=2.1.6
+revision=1
 build_style=python3-pep517
 make_check_args="--ignore=test/typing/test_mypy.py" # requires mypy>=1.17
 hostmakedepends="python3-setuptools python3-Cython python3-wheel"
@@ -12,9 +12,9 @@ short_desc="SQL Toolkit and Object Relational Mapper for Python3 (v2)"
 maintainer="icp <pangolin@vivaldi.net>"
 license="MIT"
 homepage="https://www.sqlalchemy.org"
-changelog="https://docs.sqlalchemy.org/en/20/changelog/changelog_20.html"
+changelog="https://docs.sqlalchemy.org/en/21/changelog/changelog_21.html"
 distfiles="${PYPI_SITE}/s/sqlaLchemy/sqlalchemy-${version}.tar.gz"
-checksum=160bedd8a5c28765bd5be4dec2d881e109e33b34922e50a3b881a7681773ac5f
+checksum=499eae5c9051efe96cb9a73ec2fbde8ffa4186f102b9094ebab8fcc9d3b99f52
 
 conflicts="python3-SQLAlchemy"
 
