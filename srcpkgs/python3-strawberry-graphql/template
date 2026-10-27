@@ -1,0 +1,19 @@
+# Template file for 'python3-strawberry-graphql'
+pkgname=python3-strawberry-graphql
+version=0.335.0
+revision=1
+build_style=python3-pep517
+hostmakedepends="uv-build python3-uv-dynamic-versioning"
+depends="python3-graphql-core python3-cross-web python3-packaging
+ python3-dateutil python3-typing_extensions"
+short_desc="GraphQL library for Python, dataclass based"
+maintainer="Danolo Alcnom <danolo@danoloan.es>"
+license="MIT"
+homepage="https://github.com/strawberry-graphql/strawberry"
+distfiles="${PYPI_SITE}/s/strawberry-graphql/strawberry_graphql-${version}.tar.gz"
+checksum=9c8d7340c14387824c1b9c0e5fed3ee8c55a2482aee9ce0f62c2aea9bc93a0df
+
+post_patch() {
+	# Void's uv-build is newer than the upper bound upstream pins
+	vsed -i -e 's/uv_build>=0.11,<0.12/uv_build/' pyproject.toml
+}
