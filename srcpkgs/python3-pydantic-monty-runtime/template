@@ -1,0 +1,14 @@
+# Template file for 'python3-pydantic-monty-runtime'
+pkgname=python3-pydantic-monty-runtime
+version=1.1.0
+revision=1
+build_style=python3-pep517
+build_helper="rust"
+hostmakedepends="maturin cargo pkg-config"
+makedepends="rust-std python3 libzstd-devel"
+short_desc="Runtime half of the Monty Python sandbox for Pydantic"
+maintainer="Danolo Alcnom <danolo@danoloan.es>"
+license="MIT"
+homepage="https://github.com/pydantic/monty"
+distfiles="${PYPI_SITE}/p/pydantic-monty-runtime/pydantic_monty_runtime-${version}.tar.gz"
+checksum=ac03475cf60b3a07d7bfdb3a32c3fcfb6b026d903b536856d097001145960dc5
