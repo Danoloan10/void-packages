@@ -1,0 +1,17 @@
+# Template file for 'python3-opentelemetry-proto'
+pkgname=python3-opentelemetry-proto
+version=1.45.1
+revision=1
+build_style=python3-pep517
+hostmakedepends="hatchling"
+depends="python3-protobuf"
+short_desc="OpenTelemetry Python protobuf implementation"
+maintainer="Danolo Alcnom <danolo@danoloan.es>"
+license="Apache-2.0"
+homepage="https://github.com/open-telemetry/opentelemetry-python"
+distfiles="${PYPI_SITE}/o/opentelemetry-proto/opentelemetry_proto-${version}.tar.gz"
+checksum=79e0fb95e4616691a469439238aa9224d75779b3e108e895d1aa125ab29ca77c
+
+post_install() {
+	vlicense LICENSE
+}
