@@ -1,0 +1,13 @@
+# Template file for 'python3-python-dotenv'
+pkgname=python3-python-dotenv
+version=1.2.4
+revision=1
+build_style=python3-pep517
+hostmakedepends="python3-setuptools"
+depends="python3"
+short_desc="Read key-value pairs from .env files"
+maintainer="Danolo Alcnom <danolo@danoloan.es>"
+license="BSD-3-Clause"
+homepage="https://github.com/theskumar/python-dotenv"
+distfiles="${PYPI_SITE}/p/python-dotenv/python_dotenv-${version}.tar.gz"
+checksum=f0d53e69935a851c0dcc78f3ab7aaccd8cabef0b92382b576b824212902873c0
