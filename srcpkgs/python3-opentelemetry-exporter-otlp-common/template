@@ -1,0 +1,17 @@
+# Template file for 'python3-opentelemetry-exporter-otlp-common'
+pkgname=python3-opentelemetry-exporter-otlp-common
+version=0.66b1
+revision=1
+build_style=python3-pep517
+hostmakedepends="hatchling"
+depends="python3-opentelemetry-sdk"
+short_desc="OpenTelemetry OTLP exporter common code"
+maintainer="Danolo Alcnom <danolo@danoloan.es>"
+license="Apache-2.0"
+homepage="https://github.com/open-telemetry/opentelemetry-python"
+distfiles="${PYPI_SITE}/o/opentelemetry-exporter-otlp-common/opentelemetry_exporter_otlp_common-${version}.tar.gz"
+checksum=6b1403487a2185ac1feb45fd5546fdf8630ce71c36bcefaadf51e2130e9e23f9
+
+post_install() {
+	vlicense LICENSE
+}
