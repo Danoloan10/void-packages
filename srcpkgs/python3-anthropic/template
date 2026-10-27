@@ -1,0 +1,20 @@
+# Template file for 'python3-anthropic'
+pkgname=python3-anthropic
+version=1.17.0
+revision=1
+build_style=python3-pep517
+hostmakedepends="hatchling hatch-fancy-pypi-readme"
+depends="python3-anyio python3-docstring-parser python3-httpx2 python3-jiter
+ python3-opentelemetry-api python3-pydantic python3-sniffio
+ python3-typing_extensions"
+short_desc="Python client library for the Anthropic API"
+maintainer="Danolo Alcnom <danolo@danoloan.es>"
+license="MIT"
+homepage="https://github.com/anthropics/anthropic-sdk-python"
+distfiles="${PYPI_SITE}/a/anthropic/anthropic-${version}.tar.gz"
+checksum=dcf77a74dde89a9fd12405fca798b012725a107f7c9488454234a74e275c2163
+
+post_patch() {
+	# Void's hatchling is newer than the exact version upstream pins
+	vsed -i -e 's/hatchling==1.26.3/hatchling/' pyproject.toml
+}
