@@ -1,0 +1,17 @@
+# Template file for 'python3-arize-phoenix-otel'
+pkgname=python3-arize-phoenix-otel
+version=0.17.2
+revision=1
+build_style=python3-pep517
+hostmakedepends="hatchling"
+depends="python3-openinference-instrumentation
+ python3-openinference-semantic-conventions python3-opentelemetry-exporter-otlp
+ python3-opentelemetry-exporter-otlp-proto-http python3-opentelemetry-proto
+ python3-opentelemetry-sdk python3-opentelemetry-semantic-conventions
+ python3-typing_extensions python3-wrapt"
+short_desc="OpenTelemetry configuration helpers for Arize Phoenix"
+maintainer="Danolo Alcnom <danolo@danoloan.es>"
+license="Apache-2.0"
+homepage="https://github.com/Arize-ai/phoenix/tree/main/packages/phoenix-otel"
+distfiles="${PYPI_SITE}/a/arize-phoenix-otel/arize_phoenix_otel-${version}.tar.gz"
+checksum=4e256bb205ddb216328372b17508f3695d011655d7b1f477f37aabe5b9a10109
