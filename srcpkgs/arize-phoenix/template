@@ -1,0 +1,46 @@
+# Template file for 'arize-phoenix'
+pkgname=arize-phoenix
+version=20.26.1
+revision=1
+build_style=python3-pep517
+hostmakedepends="hatchling"
+depends="python3-aioitertools python3-aiosqlite python3-alembic
+ python3-anthropic python3-arize-phoenix-client python3-arize-phoenix-evals
+ python3-arize-phoenix-otel python3-arize-phoenix-sqlean python3-authlib
+ python3-bashkit python3-cachetools python3-certifi python3-email-validator
+ python3-fastapi python3-fastmcp-slim python3-graphql-core
+ python3-grpc-interceptor python3-grpcio python3-h2 python3-httpx
+ python3-Jinja2 python3-jmespath python3-joserfc python3-jsonpath-ng
+ python3-jsonschema python3-ldap3 python3-numpy
+ python3-openinference-instrumentation
+ python3-openinference-instrumentation-openai
+ python3-openinference-semantic-conventions python3-opentelemetry-exporter-otlp
+ python3-opentelemetry-proto python3-opentelemetry-sdk python3-orjson
+ python3-pandas python3-prometheus_client python3-psutil python3-pyarrow
+ python3-pydantic python3-pydantic-ai-slim python3-pydantic-monty
+ python3-pystache python3-dateutil python3-python-multipart python3-yaml
+ python3-snowballstemmer python3-SQLAlchemy2 python3-sqlglot python3-starlette
+ python3-strawberry-graphql python3-tqdm python3-typing_extensions
+ python3-uvicorn python3-wrapt"
+short_desc="AI observability and evaluation platform for LLM applications"
+maintainer="Danolo Alcnom <danolo@danoloan.es>"
+license="Elastic-2.0"
+homepage="https://github.com/Arize-ai/phoenix"
+changelog="https://github.com/Arize-ai/phoenix/releases"
+distfiles="${PYPI_SITE}/a/arize-phoenix/arize_phoenix-${version}.tar.gz"
+checksum=3b8e61b759746ec23bc260202049b60e64f032dd0a4d27b548a642fd1c061f62
+
+# Upstream pins: strawberry-graphql==0.335.0, sqlglot==30.21.0,
+# pydantic-monty==1.1.0 and requires fastapi>=0.142.0, sqlalchemy>=2.1.1.
+#
+# Not packaged (upstream extras, kept out to limit the dependency closure):
+#   aws/azure/container/e2b/daytona/modal/pg/vercel/wasm  -- sandbox and cloud
+#   pydantic-ai providers beyond the base set: google (google-genai),
+#   openai>=3.26, bedrock (boto3). The server runs without them; the agent
+#   assistant features that need those providers stay unavailable.
+make_check=no # tests need the full upstream dev environment
+
+post_install() {
+	vlicense LICENSE
+	vlicense IP_NOTICE
+}
