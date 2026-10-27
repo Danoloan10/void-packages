@@ -1,0 +1,20 @@
+# Template file for 'python3-opentelemetry-exporter-otlp-proto-grpc'
+pkgname=python3-opentelemetry-exporter-otlp-proto-grpc
+version=1.45.1
+revision=1
+build_style=python3-pep517
+hostmakedepends="hatchling"
+depends="python3-googleapis-common-protos python3-grpcio
+ python3-opentelemetry-api python3-opentelemetry-exporter-otlp-common
+ python3-opentelemetry-exporter-otlp-proto-common python3-opentelemetry-proto
+ python3-opentelemetry-sdk python3-typing_extensions"
+short_desc="OpenTelemetry OTLP gRPC protobuf exporter"
+maintainer="Danolo Alcnom <danolo@danoloan.es>"
+license="Apache-2.0"
+homepage="https://github.com/open-telemetry/opentelemetry-python"
+distfiles="${PYPI_SITE}/o/opentelemetry-exporter-otlp-proto-grpc/opentelemetry_exporter_otlp_proto_grpc-${version}.tar.gz"
+checksum=3b3dcfbfdcb4e35149fcf309972282054b45228f5c10547d0095d6578510a9a0
+
+post_install() {
+	vlicense LICENSE
+}
