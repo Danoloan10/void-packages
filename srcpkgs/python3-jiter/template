@@ -1,0 +1,14 @@
+# Template file for 'python3-jiter'
+pkgname=python3-jiter
+version=0.18.0
+revision=1
+build_style=python3-pep517
+build_helper="rust"
+hostmakedepends="maturin cargo"
+makedepends="rust-std python3"
+short_desc="Fast iterable JSON parser"
+maintainer="Danolo Alcnom <danolo@danoloan.es>"
+license="MIT"
+homepage="https://github.com/pydantic/jiter"
+distfiles="${PYPI_SITE}/j/jiter/jiter-${version}.tar.gz"
+checksum=a0ca63fd9450a212e4e658d4cfe0ab4977c4f9b0003c68828b843c65e27662ff
