@@ -1,0 +1,19 @@
+# Template file for 'python3-opentelemetry-instrumentation-httpx'
+pkgname=python3-opentelemetry-instrumentation-httpx
+version=0.66b1
+revision=1
+build_style=python3-pep517
+hostmakedepends="hatchling"
+depends="python3-opentelemetry-api python3-opentelemetry-instrumentation
+ python3-opentelemetry-semantic-conventions python3-opentelemetry-util-http
+ python3-wrapt"
+short_desc="OpenTelemetry HTTPX instrumentation for Python"
+maintainer="Danolo Alcnom <danolo@danoloan.es>"
+license="Apache-2.0"
+homepage="https://github.com/open-telemetry/opentelemetry-python-contrib"
+distfiles="${PYPI_SITE}/o/opentelemetry-instrumentation-httpx/opentelemetry_instrumentation_httpx-${version}.tar.gz"
+checksum=5865a72c68098c85955a271ab8744b480a36e3ee492d35b8cadb93c7c4dbb618
+
+post_install() {
+	vlicense LICENSE
+}
