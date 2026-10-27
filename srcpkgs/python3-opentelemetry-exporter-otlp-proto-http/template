@@ -1,0 +1,21 @@
+# Template file for 'python3-opentelemetry-exporter-otlp-proto-http'
+pkgname=python3-opentelemetry-exporter-otlp-proto-http
+version=1.45.1
+revision=1
+build_style=python3-pep517
+hostmakedepends="hatchling"
+depends="python3-googleapis-common-protos python3-opentelemetry-api
+ python3-opentelemetry-exporter-http-transport
+ python3-opentelemetry-exporter-otlp-common
+ python3-opentelemetry-exporter-otlp-proto-common python3-opentelemetry-proto
+ python3-opentelemetry-sdk python3-requests python3-typing_extensions"
+short_desc="OpenTelemetry OTLP HTTP protobuf exporter"
+maintainer="Danolo Alcnom <danolo@danoloan.es>"
+license="Apache-2.0"
+homepage="https://github.com/open-telemetry/opentelemetry-python"
+distfiles="${PYPI_SITE}/o/opentelemetry-exporter-otlp-proto-http/opentelemetry_exporter_otlp_proto_http-${version}.tar.gz"
+checksum=45c218405ce3fd879596924b1874bf9a8f6880206d61065c5a912c8e5c297fb7
+
+post_install() {
+	vlicense LICENSE
+}
