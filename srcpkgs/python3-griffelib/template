@@ -1,0 +1,13 @@
+# Template file for 'python3-griffelib'
+pkgname=python3-griffelib
+version=2.4.1
+revision=1
+build_style=python3-pep517
+hostmakedepends="hatchling python3-pdm-backend python3-uv-dynamic-versioning"
+depends="python3"
+short_desc="Library for building and transforming Python call graphs"
+maintainer="Danolo Alcnom <danolo@danoloan.es>"
+license="ISC"
+homepage="https://github.com/mkdocstrings/griffe"
+distfiles="${PYPI_SITE}/g/griffelib/griffelib-${version}.tar.gz"
+checksum=40c028dd2e623f464423f0e11e3c553158f1cf4f1368239a370534d73e1407ff
