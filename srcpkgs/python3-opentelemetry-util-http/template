@@ -1,0 +1,12 @@
+# Template file for 'python3-opentelemetry-util-http'
+pkgname=python3-opentelemetry-util-http
+version=0.66b1
+revision=1
+build_style=python3-pep517
+hostmakedepends="hatchling"
+short_desc="OpenTelemetry Python HTTP utilities"
+maintainer="Danolo Alcnom <danolo@danoloan.es>"
+license="Apache-2.0"
+homepage="https://github.com/open-telemetry/opentelemetry-python-contrib"
+distfiles="${PYPI_SITE}/o/opentelemetry-util-http/opentelemetry_util_http-${version}.tar.gz"
+checksum=047dea1a628031f857a5a32261dc0e955bc162d39993ed1cffb8f2cff5ba8a62
