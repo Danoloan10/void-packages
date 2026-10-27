@@ -1,0 +1,18 @@
+# Template file for 'python3-opentelemetry-instrumentation'
+pkgname=python3-opentelemetry-instrumentation
+version=0.66b1
+revision=1
+build_style=python3-pep517
+hostmakedepends="hatchling"
+depends="python3-opentelemetry-api python3-opentelemetry-semantic-conventions
+ python3-packaging python3-wrapt"
+short_desc="OpenTelemetry Python instrumentation base library"
+maintainer="Danolo Alcnom <danolo@danoloan.es>"
+license="Apache-2.0"
+homepage="https://github.com/open-telemetry/opentelemetry-python-contrib"
+distfiles="${PYPI_SITE}/o/opentelemetry-instrumentation/opentelemetry_instrumentation-${version}.tar.gz"
+checksum=e79a510f7d87c72d95e964ddb42193a0d9a75668c027d980eab032ea1322a5ce
+
+post_install() {
+	vlicense LICENSE
+}
