@@ -1,0 +1,14 @@
+# Template file for 'python3-pydantic-graph'
+pkgname=python3-pydantic-graph
+version=2.61.0
+revision=1
+build_style=python3-pep517
+hostmakedepends="hatchling"
+depends="python3-anyio python3-logfire-api python3-pydantic
+ python3-typing-inspection"
+short_desc="Graph and state machine library used by Pydantic AI"
+maintainer="Danolo Alcnom <danolo@danoloan.es>"
+license="MIT"
+homepage="https://github.com/pydantic/pydantic-ai"
+distfiles="${PYPI_SITE}/p/pydantic-graph/pydantic_graph-${version}.tar.gz"
+checksum=30e93a073998d8bc90ef2b765a8e9b0dc443cca47eb54da78ed8a6986884752d
