@@ -1,0 +1,15 @@
+# Template file for 'python3-arize-phoenix-client'
+pkgname=python3-arize-phoenix-client
+version=3.5.0
+revision=1
+build_style=python3-pep517
+hostmakedepends="hatchling"
+depends="python3-httpx python3-openinference-instrumentation
+ python3-openinference-semantic-conventions python3-opentelemetry-exporter-otlp
+ python3-opentelemetry-sdk python3-tqdm python3-typing_extensions"
+short_desc="Lightweight client for the Arize Phoenix REST API"
+maintainer="Danolo Alcnom <danolo@danoloan.es>"
+license="Apache-2.0"
+homepage="https://github.com/Arize-ai/phoenix/tree/main/packages/phoenix-client"
+distfiles="${PYPI_SITE}/a/arize-phoenix-client/arize_phoenix_client-${version}.tar.gz"
+checksum=6f9013457f6f56d56db65f61877369eae7bd23460212030b54da68cb0a4d8047
