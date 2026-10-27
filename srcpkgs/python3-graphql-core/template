@@ -1,0 +1,18 @@
+# Template file for 'python3-graphql-core'
+pkgname=python3-graphql-core
+version=3.3.1
+revision=1
+build_style=python3-pep517
+hostmakedepends="uv-build"
+depends="python3"
+short_desc="GraphQL implementation for Python, ported from graphql-js"
+maintainer="Danolo Alcnom <danolo@danoloan.es>"
+license="MIT"
+homepage="https://github.com/graphql-python/graphql-core"
+distfiles="${PYPI_SITE}/g/graphql-core/graphql_core-${version}.tar.gz"
+checksum=8d9b6f95fb66b58b260904cf9e191f422782620533ec8fa0c96ab941b6659a2a
+
+post_patch() {
+	# Void's uv-build is newer than the upper bound upstream pins
+	vsed -i -e 's/uv_build>=0.12,<0.13/uv_build/' pyproject.toml
+}
