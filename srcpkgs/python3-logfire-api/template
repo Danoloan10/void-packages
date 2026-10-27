@@ -1,0 +1,13 @@
+# Template file for 'python3-logfire-api'
+pkgname=python3-logfire-api
+version=5.4.0
+revision=1
+build_style=python3-pep517
+hostmakedepends="hatchling"
+depends="python3"
+short_desc="Lightweight Pydantic Logfire API without runtime dependencies"
+maintainer="Danolo Alcnom <danolo@danoloan.es>"
+license="MIT"
+homepage="https://github.com/pydantic/logfire"
+distfiles="${PYPI_SITE}/l/logfire-api/logfire_api-${version}.tar.gz"
+checksum=328b3fae6eaced55875339cf58521ebf13a9117bdb8be40f717f056aa62c43d3
