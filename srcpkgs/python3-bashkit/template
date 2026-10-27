@@ -1,0 +1,14 @@
+# Template file for 'python3-bashkit'
+pkgname=python3-bashkit
+version=0.20.1
+revision=1
+build_style=python3-pep517
+build_helper="rust"
+hostmakedepends="maturin cargo"
+makedepends="rust-std python3"
+short_desc="Embeddable bash interpreter for Python"
+maintainer="Danolo Alcnom <danolo@danoloan.es>"
+license="MIT"
+homepage="https://github.com/everruns/bashkit"
+distfiles="${PYPI_SITE}/b/bashkit/bashkit-${version}.tar.gz"
+checksum=99102add4f82fb54aa1269e775aab3e04a2dc3f32f5df4ea67527e526d080146
