@@ -1,0 +1,17 @@
+# Template file for 'python3-opentelemetry-semantic-conventions'
+pkgname=python3-opentelemetry-semantic-conventions
+version=0.66b1
+revision=1
+build_style=python3-pep517
+hostmakedepends="hatchling"
+depends="python3-opentelemetry-api python3-typing_extensions"
+short_desc="OpenTelemetry Python semantic conventions"
+maintainer="Danolo Alcnom <danolo@danoloan.es>"
+license="Apache-2.0"
+homepage="https://github.com/open-telemetry/opentelemetry-python"
+distfiles="${PYPI_SITE}/o/opentelemetry-semantic-conventions/opentelemetry_semantic_conventions-${version}.tar.gz"
+checksum=497ca63bf383723411e8eaf60c8779e9877633c936bb641080adab59d0eb6ec8
+
+post_install() {
+	vlicense LICENSE
+}
