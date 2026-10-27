@@ -1,0 +1,13 @@
+# Template file for 'python3-pydantic-monty'
+pkgname=python3-pydantic-monty
+version=1.1.0
+revision=1
+build_style=python3-pep517
+hostmakedepends="hatchling"
+depends="python3-pydantic-monty-client python3-pydantic-monty-runtime"
+short_desc="Monty sandboxed Python interpreter for Pydantic"
+maintainer="Danolo Alcnom <danolo@danoloan.es>"
+license="MIT"
+homepage="https://github.com/pydantic/monty"
+distfiles="${PYPI_SITE}/p/pydantic-monty/pydantic_monty-${version}.tar.gz"
+checksum=31d61d045b4779869bf09f7653e34d3fd2f52371d08b689619eb707e9dcdb282
