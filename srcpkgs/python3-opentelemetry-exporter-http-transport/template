@@ -1,0 +1,17 @@
+# Template file for 'python3-opentelemetry-exporter-http-transport'
+pkgname=python3-opentelemetry-exporter-http-transport
+version=0.66b1
+revision=1
+build_style=python3-pep517
+hostmakedepends="hatchling"
+depends="python3-opentelemetry-api python3-requests"
+short_desc="OpenTelemetry HTTP transport for exporters"
+maintainer="Danolo Alcnom <danolo@danoloan.es>"
+license="Apache-2.0"
+homepage="https://github.com/open-telemetry/opentelemetry-python"
+distfiles="${PYPI_SITE}/o/opentelemetry-exporter-http-transport/opentelemetry_exporter_http_transport-${version}.tar.gz"
+checksum=443080203bf52586ce0b2ad901e8951c61833eab1aa539ae6f1f16fe9e8e7952
+
+post_install() {
+	vlicense LICENSE
+}
