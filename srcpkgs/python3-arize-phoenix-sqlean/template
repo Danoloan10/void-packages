@@ -1,0 +1,13 @@
+# Template file for 'python3-arize-phoenix-sqlean'
+pkgname=python3-arize-phoenix-sqlean
+version=0.2.1
+revision=1
+build_style=python3-module
+hostmakedepends="python3-setuptools"
+makedepends="python3-devel"
+short_desc="SQLite3 wrapper bundled with the Sqlean extensions"
+maintainer="Danolo Alcnom <danolo@danoloan.es>"
+license="Zlib AND MIT AND BSD-2-Clause AND BSD-3-Clause AND PSF-2.0"
+homepage="https://github.com/Arize-ai/phoenix/tree/main/packages/phoenix-sqlean"
+distfiles="${PYPI_SITE}/a/arize-phoenix-sqlean/arize_phoenix_sqlean-${version}.tar.gz"
+checksum=6aa253f3839bc7f2bff2f2be16505e99ce87670b77b3d4a15594e1f7759b367d
