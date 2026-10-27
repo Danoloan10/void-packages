@@ -1,0 +1,15 @@
+# Template file for 'python3-fastmcp-slim'
+pkgname=python3-fastmcp-slim
+version=4.1.4
+revision=1
+build_style=python3-pep517
+hostmakedepends="hatchling python3-uv-dynamic-versioning"
+depends="python3-mcp-types python3-platformdirs python3-pydantic
+ python3-email-validator python3-pydantic-settings python3-python-dotenv
+ python3-rich python3-typing_extensions"
+short_desc="Fast, Pythonic Model Context Protocol framework with few deps"
+maintainer="Danolo Alcnom <danolo@danoloan.es>"
+license="Apache-2.0"
+homepage="https://github.com/PrefectHQ/fastmcp"
+distfiles="${PYPI_SITE}/f/fastmcp-slim/fastmcp_slim-${version}.tar.gz"
+checksum=d1034317e4e2960dd619930c01baabbc77e60825f55c09f93471afa427a68cd7
