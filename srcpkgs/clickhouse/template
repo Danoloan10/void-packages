@@ -1,0 +1,794 @@
+# Template file for 'clickhouse'
+pkgname=clickhouse
+version=26.10.2.103
+revision=1
+build_style=cmake
+short_desc="High-performance columnar database"
+maintainer="Danolo Alcnom <danolo@danoloan.es>"
+license="Apache-2.0"
+homepage="https://clickhouse.com/"
+# The main source tarball (GitHub arch, no submodules) plus every vendored
+# contrib submodule at its pinned commit (159), as separate distfiles.
+distfiles=" https://github.com/ClickHouse/ClickHouse/archive/refs/tags/v${version}-stable.tar.gz
+  https://codeload.github.com/ClickHouse/AMQP-CPP/tar.gz/4fccd7f84318fe3a022c63a5b621a831c99e3a32>contrib_AMQP-CPP-4fccd7f84318fe3a022c63a5b621a831c99e3a32.tar.gz
+  https://codeload.github.com/Maratyszcza/FP16/tar.gz/0a92994d729ff76a58f692d3028ca1b64b145d91>contrib_FP16-0a92994d729ff76a58f692d3028ca1b64b145d91.tar.gz
+  https://codeload.github.com/amosbird/Jieba-CPP/tar.gz/6b1d1776f0c09a17a6fd4d2e1efcb876f1bf7834>contrib_Jieba-CPP-6b1d1776f0c09a17a6fd4d2e1efcb876f1bf7834.tar.gz
+  https://codeload.github.com/taku910/mecab/tar.gz/61b90ba6e669dc2d7d533d4a80d206f3b31d52b1>contrib_MeCab-61b90ba6e669dc2d7d533d4a80d206f3b31d52b1.tar.gz
+  https://codeload.github.com/ClickHouse/NuRaft/tar.gz/884294e9dbee183b53601bbe2c8c5753cec1a3db>contrib_NuRaft-884294e9dbee183b53601bbe2c8c5753cec1a3db.tar.gz
+  https://codeload.github.com/brainhub/SHA3IUF/tar.gz/fc8504750a5c2174a1874094dd05e6a0d8797753>contrib_SHA3IUF-fc8504750a5c2174a1874094dd05e6a0d8797753.tar.gz
+  https://codeload.github.com/ClickHouse/SimSIMD/tar.gz/e81e1c2de244061a476eaa7ac4db9ca01df4feed>contrib_SimSIMD-e81e1c2de244061a476eaa7ac4db9ca01df4feed.tar.gz
+  https://codeload.github.com/ClickHouse/StringZilla/tar.gz/15c292ec71db5c0e3d05f3bd693a6b5ec9429db8>contrib_StringZilla-15c292ec71db5c0e3d05f3bd693a6b5ec9429db8.tar.gz
+  https://codeload.github.com/abseil/abseil-cpp/tar.gz/2065f4ded0558c6f89fee67c8e5228feb4eb960e>contrib_abseil-cpp-2065f4ded0558c6f89fee67c8e5228feb4eb960e.tar.gz
+  https://codeload.github.com/ClickHouse/ai-sdk-cpp/tar.gz/ab06ef70baba81ba4ecf1ece038bbae96e74d4af>contrib_ai-sdk-cpp-ab06ef70baba81ba4ecf1ece038bbae96e74d4af.tar.gz
+  https://codeload.github.com/antlr/antlr4/tar.gz/b91cecf6d06600433a12a12271a7985d2845d7aa>contrib_antlr4-cpp-runtime-b91cecf6d06600433a12a12271a7985d2845d7aa.tar.gz
+  https://codeload.github.com/ClickHouse/arrow/tar.gz/363af92ec194c0fb8c8536c8e1570e4ec6e9cb40>contrib_arrow-363af92ec194c0fb8c8536c8e1570e4ec6e9cb40.tar.gz
+  https://codeload.github.com/ClickHouse/avro/tar.gz/d8ff6d9c9fe465277723aa359bae53dd49258263>contrib_avro-d8ff6d9c9fe465277723aa359bae53dd49258263.tar.gz
+  https://codeload.github.com/ClickHouse/aws-sdk-cpp/tar.gz/e235f91d162cd4048bc73002cc3243ba6cec8afa>contrib_aws-e235f91d162cd4048bc73002cc3243ba6cec8afa.tar.gz
+  https://codeload.github.com/awslabs/aws-c-auth/tar.gz/4b5d524bf1a511b05e0fffe5bdc51800770b9427>contrib_aws-c-auth-4b5d524bf1a511b05e0fffe5bdc51800770b9427.tar.gz
+  https://codeload.github.com/awslabs/aws-c-cal/tar.gz/8aa2a48a09f93c65d4cf06388e143a6584de6321>contrib_aws-c-cal-8aa2a48a09f93c65d4cf06388e143a6584de6321.tar.gz
+  https://codeload.github.com/awslabs/aws-c-common/tar.gz/d06a38e88b3afef2a5cc0445d0b68d9d4e349fbc>contrib_aws-c-common-d06a38e88b3afef2a5cc0445d0b68d9d4e349fbc.tar.gz
+  https://codeload.github.com/awslabs/aws-c-compression/tar.gz/d8264e64f698341eb03039b96b4f44702a9b3f83>contrib_aws-c-compression-d8264e64f698341eb03039b96b4f44702a9b3f83.tar.gz
+  https://codeload.github.com/awslabs/aws-c-event-stream/tar.gz/51bef3c44e1058b1689751539170b2e0f589ccdb>contrib_aws-c-event-stream-51bef3c44e1058b1689751539170b2e0f589ccdb.tar.gz
+  https://codeload.github.com/awslabs/aws-c-http/tar.gz/8aefd899fc3210bfd0e3fd414011a3cb708bf6e4>contrib_aws-c-http-8aefd899fc3210bfd0e3fd414011a3cb708bf6e4.tar.gz
+  https://codeload.github.com/ClickHouse/aws-c-io/tar.gz/ad2b310237ca87b67b1d0f6c9bc4b865d44cf45c>contrib_aws-c-io-ad2b310237ca87b67b1d0f6c9bc4b865d44cf45c.tar.gz
+  https://codeload.github.com/awslabs/aws-c-mqtt/tar.gz/e35b9ca3f9fcbf1a972c831c5e79046ce56959d1>contrib_aws-c-mqtt-e35b9ca3f9fcbf1a972c831c5e79046ce56959d1.tar.gz
+  https://codeload.github.com/awslabs/aws-c-s3/tar.gz/226c3e6937e3d5f7db9e10651f7bd20575e98187>contrib_aws-c-s3-226c3e6937e3d5f7db9e10651f7bd20575e98187.tar.gz
+  https://codeload.github.com/awslabs/aws-c-sdkutils/tar.gz/a1cc19f53b63658f1b1400b36f199eafeeb895a6>contrib_aws-c-sdkutils-a1cc19f53b63658f1b1400b36f199eafeeb895a6.tar.gz
+  https://codeload.github.com/awslabs/aws-checksums/tar.gz/1d5f2f1f3e5d013aae8810878ceb5b3f6f258c4e>contrib_aws-checksums-1d5f2f1f3e5d013aae8810878ceb5b3f6f258c4e.tar.gz
+  https://codeload.github.com/ClickHouse/aws-crt-cpp/tar.gz/fb9638dc096ae5b472947adee958ac2b9bd75ba1>contrib_aws-crt-cpp-fb9638dc096ae5b472947adee958ac2b9bd75ba1.tar.gz
+  https://codeload.github.com/ClickHouse/azure-sdk-for-cpp/tar.gz/20f8b46b878718b4536a88888a182f60f665465a>contrib_azure-20f8b46b878718b4536a88888a182f60f665465a.tar.gz
+  https://codeload.github.com/ClickHouse/boost/tar.gz/540de0d10f9f48297c43da9e23c0fa043a694b6a>contrib_boost-540de0d10f9f48297c43da9e23c0fa043a694b6a.tar.gz
+  https://codeload.github.com/ClickHouse/brotli/tar.gz/ab806c802731217df5914e6be4828d9e267d78f8>contrib_brotli-ab806c802731217df5914e6be4828d9e267d78f8.tar.gz
+  https://codeload.github.com/bshoshany/thread-pool/tar.gz/097aa718f25d44315cadb80b407144ad455ee4f9>contrib_bs-thread-pool-097aa718f25d44315cadb80b407144ad455ee4f9.tar.gz
+  https://codeload.github.com/ClickHouse/bzip2/tar.gz/bf905ea2251191ff9911ae7ec0cfc35d41f9f7f6>contrib_bzip2-bf905ea2251191ff9911ae7ec0cfc35d41f9f7f6.tar.gz
+  https://codeload.github.com/c-ares/c-ares/tar.gz/c7a3138dcfe3bb0eaaf10c0c24c36dc66dc790ab>contrib_c-ares-c7a3138dcfe3bb0eaaf10c0c24c36dc66dc790ab.tar.gz
+  https://codeload.github.com/ClickHouse/capnproto/tar.gz/7fababf324f50e6a68be9415294ec2a4c3543208>contrib_capnproto-7fababf324f50e6a68be9415294ec2a4c3543208.tar.gz
+  https://codeload.github.com/ClickHouse/cpp-driver/tar.gz/f4a31e92a25c34c02c7291ff97c7813bc83b0e09>contrib_cassandra-f4a31e92a25c34c02c7291ff97c7813bc83b0e09.tar.gz
+  https://codeload.github.com/NVIDIA/cccl/tar.gz/9d65c77f9763cfec20452e4071128d3f0bd2625b>contrib_cccl-9d65c77f9763cfec20452e4071128d3f0bd2625b.tar.gz
+  https://codeload.github.com/ClickHouse/cctz/tar.gz/fa5fe114a87a34c055853adf54dde305979acea0>contrib_cctz-fa5fe114a87a34c055853adf54dde305979acea0.tar.gz
+  https://codeload.github.com/azat/chdig/tar.gz/a28e1072f6e2aeb98116ae6f6ecda06d57e877ff>contrib_chdig-a28e1072f6e2aeb98116ae6f6ecda06d57e877ff.tar.gz
+  https://codeload.github.com/ClickHouse/cld2/tar.gz/b19c9d5bee6622c1b1efd33264ccca6a76fb0430>contrib_cld2-b19c9d5bee6622c1b1efd33264ccca6a76fb0430.tar.gz
+  https://codeload.github.com/ClickHouse/clickhouse-clickstack/tar.gz/f5232dc36db0f151c6a19a770710fbeebfd9051b>contrib_clickstack-f5232dc36db0f151c6a19a770710fbeebfd9051b.tar.gz
+  https://codeload.github.com/corrosion-rs/corrosion/tar.gz/c4840742d23d1c1a187152e2c5ae65886b9c9007>contrib_corrosion-c4840742d23d1c1a187152e2c5ae65886b9c9007.tar.gz
+  https://codeload.github.com/ClickHouse/cppkafka/tar.gz/01ea85530b2c156db2dcadb4117f30e1faf93b09>contrib_cppkafka-01ea85530b2c156db2dcadb4117f30e1faf93b09.tar.gz
+  https://codeload.github.com/linux-on-ibm-z/crc32-s390x/tar.gz/30980583bf9ed3fa193abb83a1849705ff457f70>contrib_crc32-s390x-30980583bf9ed3fa193abb83a1849705ff457f70.tar.gz
+  https://codeload.github.com/antonblanchard/crc32-vpmsum/tar.gz/452155439389311fc7d143621eaf56a258e02476>contrib_crc32-vpmsum-452155439389311fc7d143621eaf56a258e02476.tar.gz
+  https://codeload.github.com/ClickHouse/crc32c/tar.gz/8e39af2c7f8b23d1a0c2a6367b3313149c20b520>contrib_crc32c-8e39af2c7f8b23d1a0c2a6367b3313149c20b520.tar.gz
+  https://codeload.github.com/RoaringBitmap/CRoaring/tar.gz/f2b1a55bcfa49ec986539b05b603e26a3adcc95c>contrib_croaring-f2b1a55bcfa49ec986539b05b603e26a3adcc95c.tar.gz
+  https://codeload.github.com/NVIDIA/cuCollections/tar.gz/0883368d39296f3bef3a058033141bcc642c5c54>contrib_cuCollections-0883368d39296f3bef3a058033141bcc642c5c54.tar.gz
+  https://codeload.github.com/NVIDIA/cuCascade/tar.gz/a37c33b95d032224587dc0f253236b78fdb1d07b>contrib_cucascade-a37c33b95d032224587dc0f253236b78fdb1d07b.tar.gz
+  https://codeload.github.com/rapidsai/cudf/tar.gz/ee6d3d2564869c910f8efa93c6668cf0f50ae5bb>contrib_cudf-ee6d3d2564869c910f8efa93c6668cf0f50ae5bb.tar.gz
+  https://codeload.github.com/ClickHouse/cyrus-sasl/tar.gz/e6466edfd638cc5073debe941c53345b18a09512>contrib_cyrus-sasl-e6466edfd638cc5073debe941c53345b18a09512.tar.gz
+  https://codeload.github.com/s-yata/darts-clone/tar.gz/87b71afd6cf784953e3c08f24c64203397f3b724>contrib_darts-clone-87b71afd6cf784953e3c08f24c64203397f3b724.tar.gz
+  https://codeload.github.com/ClickHouse/datasketches-cpp/tar.gz/4e91777839ba01c43f0da7d049f15478301726d3>contrib_datasketches-cpp-4e91777839ba01c43f0da7d049f15478301726d3.tar.gz
+  https://codeload.github.com/ClickHouse/delta-kernel-rs/tar.gz/88ff5a947478215d285783b42aafe6f3d04aca58>contrib_delta-kernel-rs-88ff5a947478215d285783b42aafe6f3d04aca58.tar.gz
+  https://codeload.github.com/dmlc/dlpack/tar.gz/365b823cedb281cd0240ca601aba9b78771f91a3>contrib_dlpack-365b823cedb281cd0240ca601aba9b78771f91a3.tar.gz
+  https://codeload.github.com/dmlc/dmlc-core/tar.gz/4baa84e627849e675a3f99c92990ef9c39e4269e>contrib_dmlc-core-4baa84e627849e675a3f99c92990ef9c39e4269e.tar.gz
+  https://codeload.github.com/google/double-conversion/tar.gz/9dd6227ee3e29807183e56877f0282aeb40b8b1e>contrib_double-conversion-9dd6227ee3e29807183e56877f0282aeb40b8b1e.tar.gz
+  https://codeload.github.com/ClickHouse/fast_float/tar.gz/236eba4d6b11852e16bd5b0166a0319d65496e0a>contrib_fast_float-236eba4d6b11852e16bd5b0166a0319d65496e0a.tar.gz
+  https://codeload.github.com/ClickHouse/fastops/tar.gz/e2fbb015ae99e031eaf0223cd2d5d09ca63cfedb>contrib_fastops-e2fbb015ae99e031eaf0223cd2d5d09ca63cfedb.tar.gz
+  https://codeload.github.com/google/flatbuffers/tar.gz/7e163021e59cca4f8e1e35a7c828b5c6b7915953>contrib_flatbuffers-7e163021e59cca4f8e1e35a7c828b5c6b7915953.tar.gz
+  https://codeload.github.com/ClickHouse/fmt/tar.gz/4d9c4a8580235ba0b22fc6dbf70bcd29eb3ca84c>contrib_fmtlib-4d9c4a8580235ba0b22fc6dbf70bcd29eb3ca84c.tar.gz
+  https://codeload.github.com/google/benchmark/tar.gz/192ef10025eb2c4cdd392bc502f0c852196baa48>contrib_google-benchmark-192ef10025eb2c4cdd392bc502f0c852196baa48.tar.gz
+  https://codeload.github.com/ClickHouse/google-cloud-cpp/tar.gz/499787a71646ee5f7d9a845aee79a1b0663c947d>contrib_google-cloud-cpp-499787a71646ee5f7d9a845aee79a1b0663c947d.tar.gz
+  https://codeload.github.com/protocolbuffers/protobuf/tar.gz/f377bfefc5e2cfab68b816903c25b23e091c439d>contrib_google-protobuf-f377bfefc5e2cfab68b816903c25b23e091c439d.tar.gz
+  https://codeload.github.com/google/googletest/tar.gz/063de7e9578f82b369302001269680b4b1553359>contrib_googletest-063de7e9578f82b369302001269680b4b1553359.tar.gz
+  https://codeload.github.com/ClickHouse/grpc/tar.gz/68b2fe0b2b1318f18aadee9027e86e8ceaa20af2>contrib_grpc-68b2fe0b2b1318f18aadee9027e86e8ceaa20af2.tar.gz
+  https://codeload.github.com/ClickHouse/h3/tar.gz/d906e00e9210d5a58a8b9ce24b1e276c608230fb>contrib_h3-d906e00e9210d5a58a8b9ce24b1e276c608230fb.tar.gz
+  https://codeload.github.com/ClickHouse/heks/tar.gz/ec14498a6ec2c8f00a3b76cf57e9e26c1ad7362c>contrib_heks-ec14498a6ec2c8f00a3b76cf57e9e26c1ad7362c.tar.gz
+  https://codeload.github.com/ClickHouse/hive-metastore/tar.gz/809a77d435ce218d9b000733f19489c606fc567b>contrib_hive-metastore-809a77d435ce218d9b000733f19489c606fc567b.tar.gz
+  https://codeload.github.com/ClickHouse/icu/tar.gz/b29faa6d4e46f10d230b93a3c33885e7ec71bd41>contrib_icu-b29faa6d4e46f10d230b93a3c33885e7ec71bd41.tar.gz
+  https://codeload.github.com/ClickHouse/icudata/tar.gz/e3ae5bcb2b24f17cd9336c4f1b25f36ed636d839>contrib_icudata-e3ae5bcb2b24f17cd9336c4f1b25f36ed636d839.tar.gz
+  https://codeload.github.com/ClickHouse/idna/tar.gz/262e46f3865975151683f0f60d3d6228cbe9dcb5>contrib_idna-262e46f3865975151683f0f60d3d6228cbe9dcb5.tar.gz
+  https://codeload.github.com/jedisct1/ipcrypt2/tar.gz/07fd2e1ef3bf6e7d689b6d1c46ff48f67df20888>contrib_ipcrypt2-07fd2e1ef3bf6e7d689b6d1c46ff48f67df20888.tar.gz
+  https://codeload.github.com/ClickHouse/isa-l/tar.gz/9f2b68f05752097f0f16632fc4a9a86950831efd>contrib_isa-l-9f2b68f05752097f0f16632fc4a9a86950831efd.tar.gz
+  https://codeload.github.com/ClickHouse/jemalloc/tar.gz/5f864d8bd4c4fa7a99cb47c374d5c6465a160578>contrib_jemalloc-5f864d8bd4c4fa7a99cb47c374d5c6465a160578.tar.gz
+  https://codeload.github.com/Thalhammer/jwt-cpp/tar.gz/b0ea29a58fc852a67d4e896d266880c2c63b0c4c>contrib_jwt-cpp-b0ea29a58fc852a67d4e896d266880c2c63b0c4c.tar.gz
+  https://codeload.github.com/ClickHouse/krb5/tar.gz/857c2d1edd7a4218b84594768587aa53fd63da9e>contrib_krb5-857c2d1edd7a4218b84594768587aa53fd63da9e.tar.gz
+  https://codeload.github.com/rapidsai/kvikio/tar.gz/5a77056e8fd91affe2cee1c5a395f7e3edffd9af>contrib_kvikio-5a77056e8fd91affe2cee1c5a395f7e3edffd9af.tar.gz
+  https://codeload.github.com/ClickHouse/lemmagen-c/tar.gz/59537bdcf57bbed17913292cb4502d15657231f1>contrib_lemmagen-c-59537bdcf57bbed17913292cb4502d15657231f1.tar.gz
+  https://codeload.github.com/libarchive/libarchive/tar.gz/27cbc7827172698143e440801fc0ba39ccb4f1f5>contrib_libarchive-27cbc7827172698143e440801fc0ba39ccb4f1f5.tar.gz
+  https://codeload.github.com/rg3/libbcrypt/tar.gz/8aa32ad94ebe06b76853b0767c910c9fbf7ccef4>contrib_libbcrypt-8aa32ad94ebe06b76853b0767c910c9fbf7ccef4.tar.gz
+  https://codeload.github.com/paolostivanin/libcotp/tar.gz/2ffa6281ff4219636354df08b12c1a5aadd12ab4>contrib_libcotp-2ffa6281ff4219636354df08b12c1a5aadd12ab4.tar.gz
+  https://codeload.github.com/anrieff/libcpuid/tar.gz/7ac123e3c13013ff6cd2d8c4ec1881177d71357f>contrib_libcpuid-7ac123e3c13013ff6cd2d8c4ec1881177d71357f.tar.gz
+  https://codeload.github.com/ClickHouse/libdeflate/tar.gz/65d215e89ba0cd536f6585834cf507d816cb1a2f>contrib_libdeflate-65d215e89ba0cd536f6585834cf507d816cb1a2f.tar.gz
+  https://codeload.github.com/ridiculousfish/libdivide/tar.gz/ea0fb1ad79a116cd561595c930bcaf33147b3e6c>contrib_libdivide-ea0fb1ad79a116cd561595c930bcaf33147b3e6c.tar.gz
+  https://codeload.github.com/ClickHouse/libfiu/tar.gz/74bc382193df83d829f9e5b99d7f17a841c5cf74>contrib_libfiu-74bc382193df83d829f9e5b99d7f17a841c5cf74.tar.gz
+  https://codeload.github.com/ClickHouse/libgsasl/tar.gz/2d16b4e0d9435bec4546875ef07d36383bb993a5>contrib_libgsasl-2d16b4e0d9435bec4546875ef07d36383bb993a5.tar.gz
+  https://codeload.github.com/ClickHouse/libhdfs3/tar.gz/28a9868bc15749d899669e117e0c6eb9f5350923>contrib_libhdfs3-28a9868bc15749d899669e117e0c6eb9f5350923.tar.gz
+  https://codeload.github.com/ClickHouse/libpqxx/tar.gz/24a31c3f3a9317131b1326c7b87f42053a5f4489>contrib_libpqxx-24a31c3f3a9317131b1326c7b87f42053a5f4489.tar.gz
+  https://codeload.github.com/google/libprotobuf-mutator/tar.gz/dc4ced337a9fb4047e2dc727268fbac55ca82f73>contrib_libprotobuf-mutator-dc4ced337a9fb4047e2dc727268fbac55ca82f73.tar.gz
+  https://codeload.github.com/ClickHouse/librdkafka/tar.gz/c58ce6331fb871bfb4b15758cfd3283dd0a512fd>contrib_librdkafka-c58ce6331fb871bfb4b15758cfd3283dd0a512fd.tar.gz
+  https://codeload.github.com/compudj/librseq/tar.gz/2ca6d3775a750b180b5c82b999aa5b46f3fea1a7>contrib_librseq-2ca6d3775a750b180b5c82b999aa5b46f3fea1a7.tar.gz
+  https://codeload.github.com/rapidsai/librtcx/tar.gz/a9f63f8cdd4b0b41a2d88a9f705576a61b4222ec>contrib_librtcx-a9f63f8cdd4b0b41a2d88a9f705576a61b4222ec.tar.gz
+  https://codeload.github.com/ClickHouse/libssh/tar.gz/c0083428b0c7f97f7b6a9c212d630c49b72a2d7a>contrib_libssh-c0083428b0c7f97f7b6a9c212d630c49b72a2d7a.tar.gz
+  https://codeload.github.com/ClickHouse/libstemmer_c/tar.gz/e138ee768ef8935d1957769e73850ca8c795efde>contrib_libstemmer_c-e138ee768ef8935d1957769e73850ca8c795efde.tar.gz
+  https://codeload.github.com/kaniini/libucontext/tar.gz/49e671dd52ff6791295d8161ad3b6da7dc5f6f9d>contrib_libucontext-49e671dd52ff6791295d8161ad3b6da7dc5f6f9d.tar.gz
+  https://codeload.github.com/axboe/liburing/tar.gz/d41bf9220ec39277ff235379e9089d9e0fd6c2a5>contrib_liburing-d41bf9220ec39277ff235379e9089d9e0fd6c2a5.tar.gz
+  https://codeload.github.com/ClickHouse/libuv/tar.gz/2804fb04ea7e97eae3999ff323371549d13ecd58>contrib_libuv-2804fb04ea7e97eae3999ff323371549d13ecd58.tar.gz
+  https://codeload.github.com/GNOME/libxml2/tar.gz/96498992efa48d52b0e8b83058bd88dbdaf153c1>contrib_libxml2-96498992efa48d52b0e8b83058bd88dbdaf153c1.tar.gz
+  https://codeload.github.com/ClickHouse/llvm-project/tar.gz/86b7fe802669a4513da4931d909c36f4728729b9>contrib_llvm-project-86b7fe802669a4513da4931d909c36f4728729b9.tar.gz
+  https://codeload.github.com/lz4/lz4/tar.gz/ebb370ca83af193212df4dcbadcc5d87bc0de2f0>contrib_lz4-ebb370ca83af193212df4dcbadcc5d87bc0de2f0.tar.gz
+  https://codeload.github.com/Neargye/magic_enum/tar.gz/1384769c66bd16ec9bb1353f45fe8ec8ccc12dbd>contrib_magic_enum-1384769c66bd16ec9bb1353f45fe8ec8ccc12dbd.tar.gz
+  https://codeload.github.com/ClickHouse/geometry.hpp/tar.gz/12ac5412bf85571852ad1cd7c30456faef8d6464>contrib_mapbox-geometry-12ac5412bf85571852ad1cd7c30456faef8d6464.tar.gz
+  https://codeload.github.com/ClickHouse/mariadb-connector-c/tar.gz/b3c09ab333c2ef9277291e721871a2bafca6e8bf>contrib_mariadb-connector-c-b3c09ab333c2ef9277291e721871a2bafca6e8bf.tar.gz
+  https://codeload.github.com/danlark1/miniselect/tar.gz/44d09dcb4dc2583e36f14602020fe8c58ff69129>contrib_miniselect-44d09dcb4dc2583e36f14602020fe8c58ff69129.tar.gz
+  https://codeload.github.com/zlib-ng/minizip-ng/tar.gz/7b2387161c542fa9f427352dcdef76097d0d692b>contrib_minizip-ng-7b2387161c542fa9f427352dcdef76097d0d692b.tar.gz
+  https://codeload.github.com/ClickHouse/mongo-c-driver/tar.gz/781854a79e47b4b4636d222c8d1fc4ff265128b4>contrib_mongo-c-driver-781854a79e47b4b4636d222c8d1fc4ff265128b4.tar.gz
+  https://codeload.github.com/ClickHouse/mongo-cxx-driver/tar.gz/fa9ee6ed008e84b9562a7a55d70681de8a6bc1c6>contrib_mongo-cxx-driver-fa9ee6ed008e84b9562a7a55d70681de8a6bc1c6.tar.gz
+  https://codeload.github.com/morton-nd/morton-nd/tar.gz/3795491a4aa3cdc916c8583094683f0d68df5bc0>contrib_morton-nd-3795491a4aa3cdc916c8583094683f0d68df5bc0.tar.gz
+  https://codeload.github.com/ClickHouse/msgpack-c/tar.gz/6b0d778ae059cfb77e26f2a011e99b17a8563c23>contrib_msgpack-c-6b0d778ae059cfb77e26f2a011e99b17a8563c23.tar.gz
+  https://codeload.github.com/ClickHouse/musl/tar.gz/ceb269596b20528273116fe1eefa488f83221ff8>contrib_musl-ceb269596b20528273116fe1eefa488f83221ff8.tar.gz
+  https://codeload.github.com/apache/arrow-nanoarrow/tar.gz/a579fbf5d192e85b6249935e117de7d02a6dc4e9>contrib_nanoarrow-a579fbf5d192e85b6249935e117de7d02a6dc4e9.tar.gz
+  https://codeload.github.com/ClickHouse/nats.c/tar.gz/b88704dfeb55e0f1dee165b9c1daccb90d5816d4>contrib_nats-io-b88704dfeb55e0f1dee165b9c1daccb90d5816d4.tar.gz
+  https://codeload.github.com/ClickHouse/json/tar.gz/4438a2a0cda77bf4cd74652423e03363e003a0cc>contrib_nlohmann-json-4438a2a0cda77bf4cd74652423e03363e003a0cc.tar.gz
+  https://codeload.github.com/ClickHouse/nlp-data/tar.gz/5591f91f5e748cba8fb9ef81564176feae774853>contrib_nlp-data-5591f91f5e748cba8fb9ef81564176feae774853.tar.gz
+  https://codeload.github.com/NVIDIA/NVTX/tar.gz/69c9949150ac1c310758a304082228a36d5e4758>contrib_nvtx-69c9949150ac1c310758a304082228a36d5e4758.tar.gz
+  https://codeload.github.com/openldap/openldap/tar.gz/a81b431bfc28f994a7ff8ea37f1e1c087436a56d>contrib_openldap-a81b431bfc28f994a7ff8ea37f1e1c087436a56d.tar.gz
+  https://codeload.github.com/ClickHouse/openssl/tar.gz/e20d8f40abcba2d733450a5c426490246f636368>contrib_openssl-e20d8f40abcba2d733450a5c426490246f636368.tar.gz
+  https://codeload.github.com/ClickHouse/orc/tar.gz/21955610d9776dd74a36d52f30ce95db3a5b2ec2>contrib_orc-21955610d9776dd74a36d52f30ce95db3a5b2ec2.tar.gz
+  https://codeload.github.com/apache/parquet-testing/tar.gz/56653c437c8092f704a092d0d1d4e600124cd49f>contrib_parquet-testing-56653c437c8092f704a092d0d1d4e600124cd49f.tar.gz
+  https://codeload.github.com/ClickHouse/pcodec/tar.gz/35424f0fc3aa61328940774c1b915e1356092a5a>contrib_pcodec-35424f0fc3aa61328940774c1b915e1356092a5a.tar.gz
+  https://codeload.github.com/mreineck/pocketfft/tar.gz/f4c1aa8aa9ce79ad39e80f2c9c41b92ead90fda3>contrib_pocketfft-f4c1aa8aa9ce79ad39e80f2c9c41b92ead90fda3.tar.gz
+  https://codeload.github.com/ClickHouse/postgres/tar.gz/c7649becd213231466df7e679154e8ac0f744788>contrib_postgres-c7649becd213231466df7e679154e8ac0f744788.tar.gz
+  https://codeload.github.com/ClickHouse/rapidjson/tar.gz/04dc6714905247b4529310e0cf73a03a3b8148df>contrib_rapidjson-04dc6714905247b4529310e0cf73a03a3b8148df.tar.gz
+  https://codeload.github.com/rapidsai/rapids-logger/tar.gz/1124de618517654cce3636d69d022ee76e9df4b0>contrib_rapids-logger-1124de618517654cce3636d69d022ee76e9df4b0.tar.gz
+  https://codeload.github.com/ClickHouse/re2/tar.gz/1f24555c97150767d65aa77fde8ddd029d2bb97c>contrib_re2-1f24555c97150767d65aa77fde8ddd029d2bb97c.tar.gz
+  https://codeload.github.com/ClickHouse/replxx/tar.gz/191e04e43b1ed72289adfe7d2b3fd59b4fb4e78b>contrib_replxx-191e04e43b1ed72289adfe7d2b3fd59b4fb4e78b.tar.gz
+  https://codeload.github.com/rapidsai/rmm/tar.gz/42d059f127b4a2aef21367930a0491de3a01bfc7>contrib_rmm-42d059f127b4a2aef21367930a0491de3a01bfc7.tar.gz
+  https://codeload.github.com/ClickHouse/rocksdb/tar.gz/7d4d9327af02f4d3ac0a028817d11e4a8a0cce90>contrib_rocksdb-7d4d9327af02f4d3ac0a028817d11e4a8a0cce90.tar.gz
+  https://codeload.github.com/ClickHouse/rust_vendor/tar.gz/1e3f50523beac7359194d52665e013b155f1ec94>contrib_rust_vendor-1e3f50523beac7359194d52665e013b155f1ec94.tar.gz
+  https://codeload.github.com/ClickHouse/s2geometry/tar.gz/5409e159ec6e0334022395ed33ed24e60c69b6ae>contrib_s2geometry-5409e159ec6e0334022395ed33ed24e60c69b6ae.tar.gz
+  https://codeload.github.com/ClickHouse/silk/tar.gz/78aab9d603d43247fa8f05f86c34ecdfe2ab4095>contrib_silk-78aab9d603d43247fa8f05f86c34ecdfe2ab4095.tar.gz
+  https://codeload.github.com/fast-pack/simdcomp/tar.gz/009c67807670d16f8984c0534aef0e630e5465a4>contrib_simdcomp-009c67807670d16f8984c0534aef0e630e5465a4.tar.gz
+  https://codeload.github.com/ClickHouse/simdjson/tar.gz/47b97cc5dcfbf0caac51f0e5bbf7709484a041d8>contrib_simdjson-47b97cc5dcfbf0caac51f0e5bbf7709484a041d8.tar.gz
+  https://codeload.github.com/ClickHouse/simdutf/tar.gz/fdca8627a15f3772921b2304ef927bd65728bbfa>contrib_simdutf-fdca8627a15f3772921b2304ef927bd65728bbfa.tar.gz
+  https://codeload.github.com/ClickHouse/snappy/tar.gz/ce10ba11ed531da1a7df911924f45ae14f13c8b0>contrib_snappy-ce10ba11ed531da1a7df911924f45ae14f13c8b0.tar.gz
+  https://codeload.github.com/sparsehash/sparsehash-c11/tar.gz/edd6f1180156e76facc1c0449da245208ab39503>contrib_sparsehash-c11-edd6f1180156e76facc1c0449da245208ab39503.tar.gz
+  https://codeload.github.com/gabime/spdlog/tar.gz/27cb4c76708608465c413f6d0e6b8d99a4d84302>contrib_spdlog-27cb4c76708608465c413f6d0e6b8d99a4d84302.tar.gz
+  https://codeload.github.com/sqids/sqids-cpp/tar.gz/a471f53672e98d49223f598528a533b07b085c61>contrib_sqids-cpp-a471f53672e98d49223f598528a533b07b085c61.tar.gz
+  https://codeload.github.com/ClickHouse/clickhouse-sql-console/tar.gz/e8dadc688cc690adc09a46d384bb70f0c53b19f7>contrib_sql-console-e8dadc688cc690adc09a46d384bb70f0c53b19f7.tar.gz
+  https://codeload.github.com/ClickHouse/sqlite-amalgamation/tar.gz/23c7b76929611997c5f0315b3149372b1bee1d41>contrib_sqlite-amalgamation-23c7b76929611997c5f0315b3149372b1bee1d41.tar.gz
+  https://codeload.github.com/substrait-io/substrait/tar.gz/de9e6328f4f94abc0809977f57dfde7262a7258b>contrib_substrait-de9e6328f4f94abc0809977f57dfde7262a7258b.tar.gz
+  https://codeload.github.com/ClickHouse/sysroot/tar.gz/6dd29c222896e54de24e7af1b191c92e4cf2e229>contrib_sysroot-6dd29c222896e54de24e7af1b191c92e4cf2e229.tar.gz
+  https://codeload.github.com/ClickHouse/SZ3/tar.gz/f36e8b064fdde4bac260988ea459786964bbb492>contrib_sz3-f36e8b064fdde4bac260988ea459786964bbb492.tar.gz
+  https://codeload.github.com/ClickHouse/thrift/tar.gz/26bf3f0c3cade6f2c9fac82d4962751466282c23>contrib_thrift-26bf3f0c3cade6f2c9fac82d4962751466282c23.tar.gz
+  https://codeload.github.com/ClickHouse/ulid-c/tar.gz/c433b6783cf918b8f996dacd014cb2b68c7de419>contrib_ulid-c-c433b6783cf918b8f996dacd014cb2b68c7de419.tar.gz
+  https://codeload.github.com/ClickHouse/usearch/tar.gz/6bd13d4c69a1baef1f668e652c3ca26028970f12>contrib_usearch-6bd13d4c69a1baef1f668e652c3ca26028970f12.tar.gz
+  https://codeload.github.com/ClickHouse/vectorscan/tar.gz/4f863adbc2aa1129d473483d1a70134da07b5074>contrib_vectorscan-4f863adbc2aa1129d473483d1a70134da07b5074.tar.gz
+  https://codeload.github.com/ClickHouse/wagyu/tar.gz/22ce25812c98e42dc277805941ab8e6577ba729b>contrib_wagyu-22ce25812c98e42dc277805941ab8e6577ba729b.tar.gz
+  https://codeload.github.com/ClickHouse/wasmtime/tar.gz/561b224fd0589a02fc9e7bcef1aeb70d886d33c0>contrib_wasmtime-561b224fd0589a02fc9e7bcef1aeb70d886d33c0.tar.gz
+  https://codeload.github.com/ClickHouse/wordnet-blast/tar.gz/1d16ac28036e19fe8da7ba72c16a307fbdf8c87e>contrib_wordnet-blast-1d16ac28036e19fe8da7ba72c16a307fbdf8c87e.tar.gz
+  https://codeload.github.com/wangyi-fudan/wyhash/tar.gz/991aa3dab624e50b066f7a02ccc9f6935cc740ec>contrib_wyhash-991aa3dab624e50b066f7a02ccc9f6935cc740ec.tar.gz
+  https://codeload.github.com/ClickHouse/xgboost/tar.gz/665fa8355e455a3b9fc7acbfd68e6788337a45f8>contrib_xgboost-665fa8355e455a3b9fc7acbfd68e6788337a45f8.tar.gz
+  https://codeload.github.com/ClickHouse/xsimd/tar.gz/f795779ccfad12832ea47bfc02d02a65fd7f3576>contrib_xsimd-f795779ccfad12832ea47bfc02d02a65fd7f3576.tar.gz
+  https://codeload.github.com/Cyan4973/xxHash/tar.gz/c87183a77d67f7d37e3d2d1b7eaac5e7c695e4f0>contrib_xxHash-c87183a77d67f7d37e3d2d1b7eaac5e7c695e4f0.tar.gz
+  https://codeload.github.com/tukaani-project/xz/tar.gz/d3e650e63c110e830fd5391e7f8b45df0b91d3da>contrib_xz-d3e650e63c110e830fd5391e7f8b45df0b91d3da.tar.gz
+  https://codeload.github.com/ClickHouse/yaml-cpp/tar.gz/acf418672e8aae00fa0de9ada9753e9001a6d57e>contrib_yaml-cpp-acf418672e8aae00fa0de9ada9753e9001a6d57e.tar.gz
+  https://codeload.github.com/ClickHouse/zlib-ng/tar.gz/a2fbeffdc30a8b0ce6d54ee31208e2688eac4c9f>contrib_zlib-ng-a2fbeffdc30a8b0ce6d54ee31208e2688eac4c9f.tar.gz
+  https://codeload.github.com/vitaut/zmij/tar.gz/b490231ab0cd976b8e3a6e3b442c7eeee22fe05d>contrib_zmij-b490231ab0cd976b8e3a6e3b442c7eeee22fe05d.tar.gz
+  https://codeload.github.com/ClickHouse/zstd/tar.gz/5b3e9e8fd2779260101a07e6cc7b34fd8764617f>contrib_zstd-5b3e9e8fd2779260101a07e6cc7b34fd8764617f.tar.gz
+  https://codeload.github.com/hellobertrand/zxc/tar.gz/e568d1967309fd5d160f45f2fdabcbff6ab3f058>contrib_zxc-e568d1967309fd5d160f45f2fdabcbff6ab3f058.tar.gz"
+
+skip_extraction=" contrib_AMQP-CPP-4fccd7f84318fe3a022c63a5b621a831c99e3a32.tar.gz
+  contrib_FP16-0a92994d729ff76a58f692d3028ca1b64b145d91.tar.gz
+  contrib_Jieba-CPP-6b1d1776f0c09a17a6fd4d2e1efcb876f1bf7834.tar.gz
+  contrib_MeCab-61b90ba6e669dc2d7d533d4a80d206f3b31d52b1.tar.gz
+  contrib_NuRaft-884294e9dbee183b53601bbe2c8c5753cec1a3db.tar.gz
+  contrib_SHA3IUF-fc8504750a5c2174a1874094dd05e6a0d8797753.tar.gz
+  contrib_SimSIMD-e81e1c2de244061a476eaa7ac4db9ca01df4feed.tar.gz
+  contrib_StringZilla-15c292ec71db5c0e3d05f3bd693a6b5ec9429db8.tar.gz
+  contrib_abseil-cpp-2065f4ded0558c6f89fee67c8e5228feb4eb960e.tar.gz
+  contrib_ai-sdk-cpp-ab06ef70baba81ba4ecf1ece038bbae96e74d4af.tar.gz
+  contrib_antlr4-cpp-runtime-b91cecf6d06600433a12a12271a7985d2845d7aa.tar.gz
+  contrib_arrow-363af92ec194c0fb8c8536c8e1570e4ec6e9cb40.tar.gz
+  contrib_avro-d8ff6d9c9fe465277723aa359bae53dd49258263.tar.gz
+  contrib_aws-e235f91d162cd4048bc73002cc3243ba6cec8afa.tar.gz
+  contrib_aws-c-auth-4b5d524bf1a511b05e0fffe5bdc51800770b9427.tar.gz
+  contrib_aws-c-cal-8aa2a48a09f93c65d4cf06388e143a6584de6321.tar.gz
+  contrib_aws-c-common-d06a38e88b3afef2a5cc0445d0b68d9d4e349fbc.tar.gz
+  contrib_aws-c-compression-d8264e64f698341eb03039b96b4f44702a9b3f83.tar.gz
+  contrib_aws-c-event-stream-51bef3c44e1058b1689751539170b2e0f589ccdb.tar.gz
+  contrib_aws-c-http-8aefd899fc3210bfd0e3fd414011a3cb708bf6e4.tar.gz
+  contrib_aws-c-io-ad2b310237ca87b67b1d0f6c9bc4b865d44cf45c.tar.gz
+  contrib_aws-c-mqtt-e35b9ca3f9fcbf1a972c831c5e79046ce56959d1.tar.gz
+  contrib_aws-c-s3-226c3e6937e3d5f7db9e10651f7bd20575e98187.tar.gz
+  contrib_aws-c-sdkutils-a1cc19f53b63658f1b1400b36f199eafeeb895a6.tar.gz
+  contrib_aws-checksums-1d5f2f1f3e5d013aae8810878ceb5b3f6f258c4e.tar.gz
+  contrib_aws-crt-cpp-fb9638dc096ae5b472947adee958ac2b9bd75ba1.tar.gz
+  contrib_azure-20f8b46b878718b4536a88888a182f60f665465a.tar.gz
+  contrib_boost-540de0d10f9f48297c43da9e23c0fa043a694b6a.tar.gz
+  contrib_brotli-ab806c802731217df5914e6be4828d9e267d78f8.tar.gz
+  contrib_bs-thread-pool-097aa718f25d44315cadb80b407144ad455ee4f9.tar.gz
+  contrib_bzip2-bf905ea2251191ff9911ae7ec0cfc35d41f9f7f6.tar.gz
+  contrib_c-ares-c7a3138dcfe3bb0eaaf10c0c24c36dc66dc790ab.tar.gz
+  contrib_capnproto-7fababf324f50e6a68be9415294ec2a4c3543208.tar.gz
+  contrib_cassandra-f4a31e92a25c34c02c7291ff97c7813bc83b0e09.tar.gz
+  contrib_cccl-9d65c77f9763cfec20452e4071128d3f0bd2625b.tar.gz
+  contrib_cctz-fa5fe114a87a34c055853adf54dde305979acea0.tar.gz
+  contrib_chdig-a28e1072f6e2aeb98116ae6f6ecda06d57e877ff.tar.gz
+  contrib_cld2-b19c9d5bee6622c1b1efd33264ccca6a76fb0430.tar.gz
+  contrib_clickstack-f5232dc36db0f151c6a19a770710fbeebfd9051b.tar.gz
+  contrib_corrosion-c4840742d23d1c1a187152e2c5ae65886b9c9007.tar.gz
+  contrib_cppkafka-01ea85530b2c156db2dcadb4117f30e1faf93b09.tar.gz
+  contrib_crc32-s390x-30980583bf9ed3fa193abb83a1849705ff457f70.tar.gz
+  contrib_crc32-vpmsum-452155439389311fc7d143621eaf56a258e02476.tar.gz
+  contrib_crc32c-8e39af2c7f8b23d1a0c2a6367b3313149c20b520.tar.gz
+  contrib_croaring-f2b1a55bcfa49ec986539b05b603e26a3adcc95c.tar.gz
+  contrib_cuCollections-0883368d39296f3bef3a058033141bcc642c5c54.tar.gz
+  contrib_cucascade-a37c33b95d032224587dc0f253236b78fdb1d07b.tar.gz
+  contrib_cudf-ee6d3d2564869c910f8efa93c6668cf0f50ae5bb.tar.gz
+  contrib_cyrus-sasl-e6466edfd638cc5073debe941c53345b18a09512.tar.gz
+  contrib_darts-clone-87b71afd6cf784953e3c08f24c64203397f3b724.tar.gz
+  contrib_datasketches-cpp-4e91777839ba01c43f0da7d049f15478301726d3.tar.gz
+  contrib_delta-kernel-rs-88ff5a947478215d285783b42aafe6f3d04aca58.tar.gz
+  contrib_dlpack-365b823cedb281cd0240ca601aba9b78771f91a3.tar.gz
+  contrib_dmlc-core-4baa84e627849e675a3f99c92990ef9c39e4269e.tar.gz
+  contrib_double-conversion-9dd6227ee3e29807183e56877f0282aeb40b8b1e.tar.gz
+  contrib_fast_float-236eba4d6b11852e16bd5b0166a0319d65496e0a.tar.gz
+  contrib_fastops-e2fbb015ae99e031eaf0223cd2d5d09ca63cfedb.tar.gz
+  contrib_flatbuffers-7e163021e59cca4f8e1e35a7c828b5c6b7915953.tar.gz
+  contrib_fmtlib-4d9c4a8580235ba0b22fc6dbf70bcd29eb3ca84c.tar.gz
+  contrib_google-benchmark-192ef10025eb2c4cdd392bc502f0c852196baa48.tar.gz
+  contrib_google-cloud-cpp-499787a71646ee5f7d9a845aee79a1b0663c947d.tar.gz
+  contrib_google-protobuf-f377bfefc5e2cfab68b816903c25b23e091c439d.tar.gz
+  contrib_googletest-063de7e9578f82b369302001269680b4b1553359.tar.gz
+  contrib_grpc-68b2fe0b2b1318f18aadee9027e86e8ceaa20af2.tar.gz
+  contrib_h3-d906e00e9210d5a58a8b9ce24b1e276c608230fb.tar.gz
+  contrib_heks-ec14498a6ec2c8f00a3b76cf57e9e26c1ad7362c.tar.gz
+  contrib_hive-metastore-809a77d435ce218d9b000733f19489c606fc567b.tar.gz
+  contrib_icu-b29faa6d4e46f10d230b93a3c33885e7ec71bd41.tar.gz
+  contrib_icudata-e3ae5bcb2b24f17cd9336c4f1b25f36ed636d839.tar.gz
+  contrib_idna-262e46f3865975151683f0f60d3d6228cbe9dcb5.tar.gz
+  contrib_ipcrypt2-07fd2e1ef3bf6e7d689b6d1c46ff48f67df20888.tar.gz
+  contrib_isa-l-9f2b68f05752097f0f16632fc4a9a86950831efd.tar.gz
+  contrib_jemalloc-5f864d8bd4c4fa7a99cb47c374d5c6465a160578.tar.gz
+  contrib_jwt-cpp-b0ea29a58fc852a67d4e896d266880c2c63b0c4c.tar.gz
+  contrib_krb5-857c2d1edd7a4218b84594768587aa53fd63da9e.tar.gz
+  contrib_kvikio-5a77056e8fd91affe2cee1c5a395f7e3edffd9af.tar.gz
+  contrib_lemmagen-c-59537bdcf57bbed17913292cb4502d15657231f1.tar.gz
+  contrib_libarchive-27cbc7827172698143e440801fc0ba39ccb4f1f5.tar.gz
+  contrib_libbcrypt-8aa32ad94ebe06b76853b0767c910c9fbf7ccef4.tar.gz
+  contrib_libcotp-2ffa6281ff4219636354df08b12c1a5aadd12ab4.tar.gz
+  contrib_libcpuid-7ac123e3c13013ff6cd2d8c4ec1881177d71357f.tar.gz
+  contrib_libdeflate-65d215e89ba0cd536f6585834cf507d816cb1a2f.tar.gz
+  contrib_libdivide-ea0fb1ad79a116cd561595c930bcaf33147b3e6c.tar.gz
+  contrib_libfiu-74bc382193df83d829f9e5b99d7f17a841c5cf74.tar.gz
+  contrib_libgsasl-2d16b4e0d9435bec4546875ef07d36383bb993a5.tar.gz
+  contrib_libhdfs3-28a9868bc15749d899669e117e0c6eb9f5350923.tar.gz
+  contrib_libpqxx-24a31c3f3a9317131b1326c7b87f42053a5f4489.tar.gz
+  contrib_libprotobuf-mutator-dc4ced337a9fb4047e2dc727268fbac55ca82f73.tar.gz
+  contrib_librdkafka-c58ce6331fb871bfb4b15758cfd3283dd0a512fd.tar.gz
+  contrib_librseq-2ca6d3775a750b180b5c82b999aa5b46f3fea1a7.tar.gz
+  contrib_librtcx-a9f63f8cdd4b0b41a2d88a9f705576a61b4222ec.tar.gz
+  contrib_libssh-c0083428b0c7f97f7b6a9c212d630c49b72a2d7a.tar.gz
+  contrib_libstemmer_c-e138ee768ef8935d1957769e73850ca8c795efde.tar.gz
+  contrib_libucontext-49e671dd52ff6791295d8161ad3b6da7dc5f6f9d.tar.gz
+  contrib_liburing-d41bf9220ec39277ff235379e9089d9e0fd6c2a5.tar.gz
+  contrib_libuv-2804fb04ea7e97eae3999ff323371549d13ecd58.tar.gz
+  contrib_libxml2-96498992efa48d52b0e8b83058bd88dbdaf153c1.tar.gz
+  contrib_llvm-project-86b7fe802669a4513da4931d909c36f4728729b9.tar.gz
+  contrib_lz4-ebb370ca83af193212df4dcbadcc5d87bc0de2f0.tar.gz
+  contrib_magic_enum-1384769c66bd16ec9bb1353f45fe8ec8ccc12dbd.tar.gz
+  contrib_mapbox-geometry-12ac5412bf85571852ad1cd7c30456faef8d6464.tar.gz
+  contrib_mariadb-connector-c-b3c09ab333c2ef9277291e721871a2bafca6e8bf.tar.gz
+  contrib_miniselect-44d09dcb4dc2583e36f14602020fe8c58ff69129.tar.gz
+  contrib_minizip-ng-7b2387161c542fa9f427352dcdef76097d0d692b.tar.gz
+  contrib_mongo-c-driver-781854a79e47b4b4636d222c8d1fc4ff265128b4.tar.gz
+  contrib_mongo-cxx-driver-fa9ee6ed008e84b9562a7a55d70681de8a6bc1c6.tar.gz
+  contrib_morton-nd-3795491a4aa3cdc916c8583094683f0d68df5bc0.tar.gz
+  contrib_msgpack-c-6b0d778ae059cfb77e26f2a011e99b17a8563c23.tar.gz
+  contrib_musl-ceb269596b20528273116fe1eefa488f83221ff8.tar.gz
+  contrib_nanoarrow-a579fbf5d192e85b6249935e117de7d02a6dc4e9.tar.gz
+  contrib_nats-io-b88704dfeb55e0f1dee165b9c1daccb90d5816d4.tar.gz
+  contrib_nlohmann-json-4438a2a0cda77bf4cd74652423e03363e003a0cc.tar.gz
+  contrib_nlp-data-5591f91f5e748cba8fb9ef81564176feae774853.tar.gz
+  contrib_nvtx-69c9949150ac1c310758a304082228a36d5e4758.tar.gz
+  contrib_openldap-a81b431bfc28f994a7ff8ea37f1e1c087436a56d.tar.gz
+  contrib_openssl-e20d8f40abcba2d733450a5c426490246f636368.tar.gz
+  contrib_orc-21955610d9776dd74a36d52f30ce95db3a5b2ec2.tar.gz
+  contrib_parquet-testing-56653c437c8092f704a092d0d1d4e600124cd49f.tar.gz
+  contrib_pcodec-35424f0fc3aa61328940774c1b915e1356092a5a.tar.gz
+  contrib_pocketfft-f4c1aa8aa9ce79ad39e80f2c9c41b92ead90fda3.tar.gz
+  contrib_postgres-c7649becd213231466df7e679154e8ac0f744788.tar.gz
+  contrib_rapidjson-04dc6714905247b4529310e0cf73a03a3b8148df.tar.gz
+  contrib_rapids-logger-1124de618517654cce3636d69d022ee76e9df4b0.tar.gz
+  contrib_re2-1f24555c97150767d65aa77fde8ddd029d2bb97c.tar.gz
+  contrib_replxx-191e04e43b1ed72289adfe7d2b3fd59b4fb4e78b.tar.gz
+  contrib_rmm-42d059f127b4a2aef21367930a0491de3a01bfc7.tar.gz
+  contrib_rocksdb-7d4d9327af02f4d3ac0a028817d11e4a8a0cce90.tar.gz
+  contrib_rust_vendor-1e3f50523beac7359194d52665e013b155f1ec94.tar.gz
+  contrib_s2geometry-5409e159ec6e0334022395ed33ed24e60c69b6ae.tar.gz
+  contrib_silk-78aab9d603d43247fa8f05f86c34ecdfe2ab4095.tar.gz
+  contrib_simdcomp-009c67807670d16f8984c0534aef0e630e5465a4.tar.gz
+  contrib_simdjson-47b97cc5dcfbf0caac51f0e5bbf7709484a041d8.tar.gz
+  contrib_simdutf-fdca8627a15f3772921b2304ef927bd65728bbfa.tar.gz
+  contrib_snappy-ce10ba11ed531da1a7df911924f45ae14f13c8b0.tar.gz
+  contrib_sparsehash-c11-edd6f1180156e76facc1c0449da245208ab39503.tar.gz
+  contrib_spdlog-27cb4c76708608465c413f6d0e6b8d99a4d84302.tar.gz
+  contrib_sqids-cpp-a471f53672e98d49223f598528a533b07b085c61.tar.gz
+  contrib_sql-console-e8dadc688cc690adc09a46d384bb70f0c53b19f7.tar.gz
+  contrib_sqlite-amalgamation-23c7b76929611997c5f0315b3149372b1bee1d41.tar.gz
+  contrib_substrait-de9e6328f4f94abc0809977f57dfde7262a7258b.tar.gz
+  contrib_sysroot-6dd29c222896e54de24e7af1b191c92e4cf2e229.tar.gz
+  contrib_sz3-f36e8b064fdde4bac260988ea459786964bbb492.tar.gz
+  contrib_thrift-26bf3f0c3cade6f2c9fac82d4962751466282c23.tar.gz
+  contrib_ulid-c-c433b6783cf918b8f996dacd014cb2b68c7de419.tar.gz
+  contrib_usearch-6bd13d4c69a1baef1f668e652c3ca26028970f12.tar.gz
+  contrib_vectorscan-4f863adbc2aa1129d473483d1a70134da07b5074.tar.gz
+  contrib_wagyu-22ce25812c98e42dc277805941ab8e6577ba729b.tar.gz
+  contrib_wasmtime-561b224fd0589a02fc9e7bcef1aeb70d886d33c0.tar.gz
+  contrib_wordnet-blast-1d16ac28036e19fe8da7ba72c16a307fbdf8c87e.tar.gz
+  contrib_wyhash-991aa3dab624e50b066f7a02ccc9f6935cc740ec.tar.gz
+  contrib_xgboost-665fa8355e455a3b9fc7acbfd68e6788337a45f8.tar.gz
+  contrib_xsimd-f795779ccfad12832ea47bfc02d02a65fd7f3576.tar.gz
+  contrib_xxHash-c87183a77d67f7d37e3d2d1b7eaac5e7c695e4f0.tar.gz
+  contrib_xz-d3e650e63c110e830fd5391e7f8b45df0b91d3da.tar.gz
+  contrib_yaml-cpp-acf418672e8aae00fa0de9ada9753e9001a6d57e.tar.gz
+  contrib_zlib-ng-a2fbeffdc30a8b0ce6d54ee31208e2688eac4c9f.tar.gz
+  contrib_zmij-b490231ab0cd976b8e3a6e3b442c7eeee22fe05d.tar.gz
+  contrib_zstd-5b3e9e8fd2779260101a07e6cc7b34fd8764617f.tar.gz
+  contrib_zxc-e568d1967309fd5d160f45f2fdabcbff6ab3f058.tar.gz"
+
+checksum="0ddc15f7ca58d97675161e080f2e24e89b876769e7981b76e54fad6f9548d64b
+ dedf68072523fd9206913e006d9c997d2e459f82cca90afe5bbfd6b0ccb3a6c4
+  a91f4770ff9c39f4d72e339c379f566b3bbb359fa66122d85fc0bae3dde7abc7
+  2f9efbe10fb1bb51328cecceba96cc63dcd25263cf245c69b1c623fcd1bc18a1
+  7ad44f987ae0b7fd345c72a4b67e14dbe0f4bd1669d247a8aaeb0f15218a3fd1
+  fb14c2d5c981c99a671232ccfac004ae8ff3a2356fab3fa56e3f5ab4b5169a32
+  ded3826bc0d6b19d2002b41344b009cb5ace9b3f6855eefc3a56f71b2496e125
+  1282bff0390b70e2a952654aade71c07062be8aa27726db7b84252df417eefd8
+  ce191ec86bd21729f50012177180c5a77d0b1bbb8f6f7597e6b0a6be46c0c531
+  7f4240fe135c0b0dcdd2efa664f1393b1da7e25031e17560515f452182aa0c5e
+  b2a5fc9c2726510b5a09b111de6eec64323f602136cec7b68de022f68c2c12ce
+  a0f1bfd7e93a1f1d5d53196e139a09fc557ba1b7c645a8bde0dc09dbe9160f6b
+  f3ef5672b23a9ab03f706ee4a02076f75504493d85e641af68c4088336cb64d8
+  beff4f0a8b152d558bc0c293b9d814fe0f547e23f16fdba63db88afa5decd5d7
+  161c75f2ae960f36907c242a470933b2d3096bf315824a9b3e10108e8ecd2dc2
+  b4f6690b382abe049d543804f40230e667a95a18f64506ef7647925e8c6b9b67
+  29706ab10a4d95a74db278925b82c85077c08224c0efe837841d2354555c8817
+  0107a4aae51a59b9b3600eb8444ea6552394eb68cc468e061ef19b42f572f579
+  537971fe42e989b638e0f436683357ed3d07f07b06b910b1c37ab3a8094bb8fd
+  b890d4940957d1ddade1a9d7de4adc37b7cb98dfdfdfec7436527fec8cb558df
+  61b1770e2e3a2bf046005cbfa8e26d621d8f266f05d03589ebee36bb4a0ac39f
+  17a6b5237a66a388c2c9005727a372ab6bd48317a178d4539defcd37c6ecc2ef
+  54d1987ce06eb7b39faace854818e9322d3df79cb310ada350beca0b12cb89cc
+  a8f33816bf7aff38467fb15ca233a33a9113be78dad47c8a7ee30d323b42ba74
+  f8ef9e93b30f9833d9c9ea474110c8fa2d29fd78b885546b07e68558ece3bb1c
+  c58d8c5319319dcade0926da44ad12effecb21372983e22835a657a32f03c9c9
+  3c7db704705f1759119921498ecff91b8e9e935c5c83b6f7c05f3e4bb6911c15
+  689ef9b1b9e663b7ced9ecd97cfcdbe23f9b71f036a92c3f1b83b8d969d6b165
+  0a30bdf5db21f4e43fa56b584df2c07fa9e07b4188ab5c593c48b21fe63a7b58
+  46cd22f78aa0ed8a107d2e3ee435fefad0f7733112237d37e93b711701d648d0
+  8e54280b4d9af3e4d2fd3dfa3f8d1198fc1c3a572d6f22c5eaf1abe38f2db0a8
+  3a1955ca63c6967b5ed7ef191740e431b31083316016327a5849b0e4851aa8f1
+  c9ea1b3029b23b04376c229bd519489cee180874ec48cd863a5dcba628c0fe03
+  54dcc3247331e02587dd4a4c2fe3a5041adbc592a01b8a89348782eb894ed06e
+  fe589b1e7e1f38ac996bd2ee61b4b7ef5ab23f5c29d38ecd450454b3c760b3e5
+  9c1d579a8fa2d25ab4dcf17457f3811008eb969cee740ce37eddabd1076fb3e1
+  0d0c3c1e9417f93fcbee10b11d1eab218255d62b705c83c83325863396612abc
+  eec7e31fb1867f7110998495a95f91d54e30a82e124dc40aaa31874b47c1fba3
+  1648cdbd7cd2932c13cfcb5e47955340a3afaa95f8a56725b8ff45a70168d180
+  2eb1835597c6f0b723efbfbe7baf53bf5e4fccb7914981438d13d72a326d8ebe
+  9f32ea0ebcd81f3552f72763c6bbd889f58d2bc0a3c8ef56e2f740a1f60615ac
+  1df36357fb3bba2e3ba1d0d9f33774cfe63295039b7d98835c5eab6e3855a2e6
+  24c1da7d9312d98395fbab6b7d572a4e747ffc797f4cb79d7e0435a3925d538b
+  227e5a0f8accba33827ef0ad264d319fcbc42bb94c1acebaca8e2bb1c31f5b01
+  4a58049de1c732f5c4d4f97d8bbf68c79052091b4fb147d8243f154f48edfb82
+  06859e46e9ec7a89ef9afca6e1b56a51d4396af502e8a43609302d9076ea5906
+  4ec8320a0372839b991f0b431c7f8bf0e770006cb3c8631c6e373c434471fd45
+  c6a04e46630fc79b7d295852c56f765da72b87fe5025a64fc2d6aeb7f63cbf98
+  39a38bb671c857ae10f2caa4edadb3563512c69d7c75d8a23e4a20c2474227a4
+  7b8f9a090902c218891b6e6818afa830316cfc771ff3a0708cc37a0d436bb464
+  e549f9a917e461ee2472cb4fe771403cbc7e43fefb88444b16dbeb01ef76e9c1
+  90eeaff078ee17e43b842ede0b19fce8f2c4f404a1e37f90450b646169473426
+  dff0067c956fe16369e0742248edb85e365c6f4ea85d8591af15b10fe8a34308
+  0d1e3d3c5fd3453fda1fe23c211d31b6194743a133fbea9fa67ddda398def78b
+  540309bf427e6b5c365e81c98c04861f3824f5bdc1c2a55010f590ac714345ca
+  da0344a798588f83a1252acd1c5b2a27eab0f012b8d31ac6ad2d3b43119cb963
+  ec87277deaebfe46f10a078863bc5d9d896b5424909f41ef9601082e9e088f31
+  4714371c6a5f64f42c0c788435cc5c3533b3254a5e4825bbe774a4bbc119ff75
+  4236c5d22309abeac2384d3800febcc8d60423e8cb2f573abfa8f798352c4536
+  64fc2a5b7a34c137010cdd0bb14e94a36c71fd0ebac605f98e3ca55c3a936ad2
+  f82705a2726d8f6cdcda274b841f6314dbfc6f731cdda06c946f310ec1cc3ad9
+  fb8667c119e906f35ff6edf70967742ac778b42e95c8b20c964b390d95e2a2e1
+  86ef5008dd555c399c576b36e5ee09ee9927af048e6b1cb3fab0f9e0a1bbf285
+  623fe05d283020f37a579a8985ba338091ac7229da62b5591ff40acdf05b95e2
+  f81ffb2bff53cc944beae70aa838f3adce8e2f5c3c41acdaa686ccb658429f74
+  94bc25681752bc8a1cc0296052a290614baf507e52712c6e150b70ba370ebcab
+  56662fc21318b76c1d73574a0f187622e2050d6b64de81c787d75af636b2c0ce
+  af9141a34becaf5ad6bbdb46239ff9efc395c7ae54110e1a88fce94826d3b1a3
+  328ffa590b87a16b7e04b359b030f793ba425fe2304c695c8a907a99c7e78016
+  95dcec345a3ff5050c008cad75e9a8578c54d0f2cd1b95d14fbace407235c1a1
+  24be7158a64935c0bdb19fb24181b20d5f00992442bedf4e6948bec8e004a4f5
+  a17619e88dd83eeccab694f49a99ff6f4c7dbdafd9b63088cd4aae146d37484c
+  cd1897a5533577ddc72451e9c79eead52f71099875a2dd74b78080d88ee73bcb
+  9ef222a15a8f35bd5a80b92d4110302d25ce38e206ea3e47f43a325cc6eabb4b
+  df9c4782fc3a9141b7a1156dd031756f747146952af6af101d5689e91a513efd
+  3c9c04816ab4bcd987ee4a158cfa592afdeeb414ca30ef3d8408ba4489185119
+  7e72402aac96cae0a0f81d4e27e4dacaaba4375c58839f47ecb5f0ac2b288b94
+  0b0174ffe97298ce9284274e51244911a91b999521fc6890997389c9c5096f38
+  81e981eff4746da4c80e6622dc827b232e6333ff2e27320a6ee8fde86c891b92
+  f17ab5222685b4ed32e935b0c6a2a9edbda2438a8514fbbd1f5bc21fb57aac73
+  e3bc03b5504696dc677aea3b87669a8a2efd405709115dc24c7786b4cfdb7ebb
+  5b7d07f3cc5ed6fec02efe16a3a770962a9988b4a48d1648966107a3927d91c8
+  40b3f3f72df8825e04384fa511155024f5dbc17e657e9c7530eddc25117df2ba
+  6aa730b24dabb10c350d74363f94fcb0f750fe6fde65355278410aeb5bacd7fe
+  be772a15446c94756bbf519f20a4432bd0ada75ab12231d488de13e170fadf9d
+  ab2613006de5fd54c7a88710dd87973bfbb5a76fe9f0dcc6dd2a2541fbc95b51
+  64415951289df43ef50b810264ac680e17dcde6ee9e039677339f38b00dfdd05
+  3ee87070f2cb72999e3c3bebd0ffce30468af1516d3ed1ed298ad79066adfef5
+  b23951cafc31ae8e02a4a2e67b04d401d6130e6ca8353022aaaebe27f8ab4117
+  3ccd94eb06bacc9951ae414c4bbe4f53021b81854277abc93754fced40987fa0
+  d02033232a7479dd426373e67ae544db4a56b8aa08e1a53758e1c778d1e498a8
+  f00adc2b2b71cc78f659db27b546b41bfb29fc095af48db93bbd5e318ed80eea
+  8e876fe78e5e537e18d6cc19c7b04ec77d84e9a178eaa7d11701f252799dfa21
+  378dbd83afa1f95049c3198c367152b71cbd90ebf64500caf344765436dbcbc6
+  c84f57298ed4bce278c31ed8e5c0b3da6f9bd8bc45c9dfb08656fe797bdc2c47
+  e4db39641298c90f42c29e264bd1057d0342380e712d56dfd9049da953637f48
+  29fc70bc2ca97105dda54f143c5000e01c27ddb63a66bf6ab296a72fe2b79106
+  3fa264c6117569780ea0f6447d98c77f29b285cfd665ced2ec7da4f51183607f
+  8e4498ebdb34b1dad741280f6a20dc7daba47d83d42fdf04692192523ab9f76c
+  eb1a93e934d4fd29df6e2061ba0bf447568561764d758f4a5662c0e29370ffa9
+  cb805cb9ea6c4e28e361bf861deb4a243888418cfb9f8ae7a7bbe18c35753fef
+  560c96140800e7b2d29d78e6c60fb697dfaa2ca552e5009130f1398c740e446b
+  281fbe438da5a281fb4990c82c52109df12a81a035aaaa10aa61e63cf36accac
+  89d140627b5b55838afe45e100b6f00ec1622f81adac19135a4be3016880d34d
+  467a189e998c7754ada577758d29324d5b3c866a7fb5d43700b8c551d72ca998
+  de89d8368c895e6605ecbf63153a48772eeec2439c85fbd7c113845db70d3fc2
+  f5063f6d1bea4264a34e8da7ec7ee6a9e98b6d02efc5d55c6fd0feb11eaeeb32
+  cf9c0ae2ded5db68a97aad13a9402a3846e25d290c812fab8a2833cef9fecdcc
+  b24315e333890f86e140388d54c7e56c477cdd3916a4653444d2aa762993b92d
+  1af88930d953be2d4d26385d4665d46e6e0fbb4153b938aeb8a5ff388f0632ed
+  f1826116664ee876a14f0cc0a407b3d1f3bed642b78f9b1ea03d2351fb15a19e
+  65d678af994b779118cc9caf7a6f9dd4c3fc56cf4eb549fb2e441c31694df1ff
+  d9934ae7c525710b68a5b9e700f8fe0db0895e507054ba3a97b677228507ff2c
+  77883419e5021d513049cc55c5573f05a4b952c1a41aeab242d9314b336dc5fc
+  8fdf07da6d083c5409b55c9d8f491eddf39ed7bb37c2b29ff71af3f386ae670c
+  b7c81e0af102dbc5aae43af68b08dc50a8ce0c72cf4e7db1072f6adb54f32c44
+  dec775a0d0137d0d67bdc8ee6dbda55bd978dbc27a0b959ec5f59129803b5bab
+  81cfaacd1e142f2b79dbd57e931bb92d49cbdfdd372e7dcf1d055ef7cb0a472d
+  50be9e0d460c85cd1ddd59d58f4ad51fe25273f022d1802f1dc9ee3f39c3fd7d
+  1c34cbef023dad522eb8fb1a26d936d7a4508647f8d7a7c26280c69109a615a4
+  8565e2a18bbddc1bd06a94dcc6c1ef595cc44b0ad567bad65d3b63ce22c2999d
+  1ef141ccabf66e7070dfe212966b418a51119ed053c783f215753988fa8113d5
+  eb2fdce18a7abd5ca5f4f4eb373c13a60adbf99316fec266523467b6b10adc90
+  96a2f4ef04ad06d55546dbeee355cfe6e4fc94a33dee156d40f4f55dddc31686
+  0b60b9dc39b63d7eaa8e3fcecb79134384053b5b5fc871fe8e0b5a32b6b2fcda
+  5f8fbb3bf83fbb05be012319990251bbefb991ae6b9798f53647950df60567e8
+  bc10fc7fcec2b5ccc7ae7e66fd61708f46042aa5cae294457b8b963c2654ce44
+  e938c1f127db245ec47f0ddd3ea99a2dae15745bc96f74e7d3f63181b859b5cd
+  9ad697a7a2855c4747f5e867fb7801ff4aa59c6ed6af075a4915532490a339ca
+  e7ebc6c044060e7f9e12277507383a280df57a9b887367bdacc3d0956f1fad0e
+  d2763ae4e23eb128c8d05546e3d5f915788aa3c921f6a22a3e1b9395a43275bb
+  ac5cec8c9ceca49fd3e36c5b80396ecba0b691d41623d62b640d8adb53b01a2f
+  e974af2d0d83874015f915dedbfa18d02995965ebb3cfc15f89903644fe065c1
+  ac7a596693cb84c48a84a2ba8cee9b562f0c7520b23a58cca6142a3a66399582
+  6e9b5d6bef6334942284ce79d1134a3041bea8e0c130815d9677231b648922e5
+  c242b6043e6fb79d649bafd6581a3c4d37429cc2f43f99b62c23e6b9e55eb6c0
+  7d512b37019b61646cd6fd1e48f52a3cf3e098f36b33ba9c059fe51301ff40b3
+  7cad6cc4e1e1e12b34725fa09735116a364790c516f7b483a52d1e923d6b3642
+  a4b07f4276c0cf1045b77a211020e5018016b476fd5da1cb571a7ff7d4e06c53
+  2e4c9a73aa83a57f6a1abde29c1bdd2c18bb2349f0341575e2a9c462f69c01d8
+  58288c32495585074b6994be42c16c0a57e316c12f303a7ac5de317f3d310956
+  d017b42ccaa184738080c5763b60ae7528fafc08e3aac6ec77e9f4d2f5fc3b95
+  6e4744aa252a93850c21f749f849ba108f80cdd5ac5b60c8f41f0be8f2beb86f
+  5acf23bbbdde0df5507aa4d1e6f3c9efc205eef73e2c6a6e474c5905c061bf9a
+  715652ddf1ba8eccaddfdddbb5718bac4652b7cd407e317b1ec295ba517d8e9b
+  69272e585d9ac8a009bb0cb1e31748a61f0b5473f494279ec38325033816ef2a
+  2805f46c0dfda39451f76c96ba3d2ac999bfa96ec39534fb2605083633484907
+  71f0eec8b1c1c9dd2a82f9da168b256131d0f1c7bc1d68cbeec8c68e841ce006
+  169e15818ed490a53879517d66adccfc94a5926e6666027ffd114ed20e760c20
+  f5702eeef8b270618821a2b18646ef69cc3383298a34f516d38b70d118a602bd
+  9bc9d358843bfa8f1c1e99a6d146db15e97b619d99d2b053b1ded6a1fddcc2cf
+  3901761f89cd714cbe21c6718258d62bc76bff0533d2c323e73f06cfdb86194b
+  e14a762d46748cd7f86dc3dfd292664236be41213cf11df0f52963ea683076b8
+  ed9fa05b338a5b308eca0c25e93fe4ba8e3adfaa6f94bedf1f39b0a0d1010751
+  b5aad5c776b324a39a46bbd588d4b5c001266b87ed3887aea1dc2854702d041c
+  42e5c97803018e8d9e3641a33f1eb937006b6203a9594c73e0dd2b5f6e9712a7
+  3f91ae2a51b729824e81125ad432d83719027219d4f7a83d5e5f2223a220dff5
+  cf08e1309f8745e92b6f805bc35cc9bd0cee2edca1082925e5f672fdbed3ff5c
+  69811b370e21f0bfbf7633eff6c4f5b61961db7891d45ff7bc2243111bcac8b3
+  13e51956a19c174a802326865372c7d9f019f5aa135fd999b325443e4b37581f"
+
+hostmakedepends="cmake clang lld llvm nasm perl yasm git"
+# NO_ARMV81_OR_HIGHER: upstream's default aarch64 profile targets ARMv8.2
+# (Graviton-class); this host target includes Raspberry Pi 4 (Cortex-A72,
+# ARMv8.0), so build the maximum-compatibility profile (-march=armv8-a+crc).
+configure_args="-DDISABLE_HERMETIC_BUILD=ON -DUSE_MUSL=ON -DENABLE_RUST=OFF -DENABLE_TESTS=OFF -DNO_ARMV81_OR_HIGHER=1"
+
+post_extract() {
+	# Place every vendored submodule into its path (159 pinned-commit
+	# trees; see contrib/CMakeLists.txt). vsrcextract strips the leading
+	# <repo>-<sha> top-level dir into the target path.
+	while IFS='|' read -r _path _file; do
+		mkdir -p "${_path}"
+		vsrcextract -C "${_path}" "${_file}"
+	done <<EOF_SUBMK
+contrib/AMQP-CPP|contrib_AMQP-CPP-4fccd7f84318fe3a022c63a5b621a831c99e3a32.tar.gz
+contrib/FP16|contrib_FP16-0a92994d729ff76a58f692d3028ca1b64b145d91.tar.gz
+contrib/Jieba-CPP|contrib_Jieba-CPP-6b1d1776f0c09a17a6fd4d2e1efcb876f1bf7834.tar.gz
+contrib/MeCab|contrib_MeCab-61b90ba6e669dc2d7d533d4a80d206f3b31d52b1.tar.gz
+contrib/NuRaft|contrib_NuRaft-884294e9dbee183b53601bbe2c8c5753cec1a3db.tar.gz
+contrib/SHA3IUF|contrib_SHA3IUF-fc8504750a5c2174a1874094dd05e6a0d8797753.tar.gz
+contrib/SimSIMD|contrib_SimSIMD-e81e1c2de244061a476eaa7ac4db9ca01df4feed.tar.gz
+contrib/StringZilla|contrib_StringZilla-15c292ec71db5c0e3d05f3bd693a6b5ec9429db8.tar.gz
+contrib/abseil-cpp|contrib_abseil-cpp-2065f4ded0558c6f89fee67c8e5228feb4eb960e.tar.gz
+contrib/ai-sdk-cpp|contrib_ai-sdk-cpp-ab06ef70baba81ba4ecf1ece038bbae96e74d4af.tar.gz
+contrib/antlr4-cpp-runtime|contrib_antlr4-cpp-runtime-b91cecf6d06600433a12a12271a7985d2845d7aa.tar.gz
+contrib/arrow|contrib_arrow-363af92ec194c0fb8c8536c8e1570e4ec6e9cb40.tar.gz
+contrib/avro|contrib_avro-d8ff6d9c9fe465277723aa359bae53dd49258263.tar.gz
+contrib/aws|contrib_aws-e235f91d162cd4048bc73002cc3243ba6cec8afa.tar.gz
+contrib/aws-c-auth|contrib_aws-c-auth-4b5d524bf1a511b05e0fffe5bdc51800770b9427.tar.gz
+contrib/aws-c-cal|contrib_aws-c-cal-8aa2a48a09f93c65d4cf06388e143a6584de6321.tar.gz
+contrib/aws-c-common|contrib_aws-c-common-d06a38e88b3afef2a5cc0445d0b68d9d4e349fbc.tar.gz
+contrib/aws-c-compression|contrib_aws-c-compression-d8264e64f698341eb03039b96b4f44702a9b3f83.tar.gz
+contrib/aws-c-event-stream|contrib_aws-c-event-stream-51bef3c44e1058b1689751539170b2e0f589ccdb.tar.gz
+contrib/aws-c-http|contrib_aws-c-http-8aefd899fc3210bfd0e3fd414011a3cb708bf6e4.tar.gz
+contrib/aws-c-io|contrib_aws-c-io-ad2b310237ca87b67b1d0f6c9bc4b865d44cf45c.tar.gz
+contrib/aws-c-mqtt|contrib_aws-c-mqtt-e35b9ca3f9fcbf1a972c831c5e79046ce56959d1.tar.gz
+contrib/aws-c-s3|contrib_aws-c-s3-226c3e6937e3d5f7db9e10651f7bd20575e98187.tar.gz
+contrib/aws-c-sdkutils|contrib_aws-c-sdkutils-a1cc19f53b63658f1b1400b36f199eafeeb895a6.tar.gz
+contrib/aws-checksums|contrib_aws-checksums-1d5f2f1f3e5d013aae8810878ceb5b3f6f258c4e.tar.gz
+contrib/aws-crt-cpp|contrib_aws-crt-cpp-fb9638dc096ae5b472947adee958ac2b9bd75ba1.tar.gz
+contrib/azure|contrib_azure-20f8b46b878718b4536a88888a182f60f665465a.tar.gz
+contrib/boost|contrib_boost-540de0d10f9f48297c43da9e23c0fa043a694b6a.tar.gz
+contrib/brotli|contrib_brotli-ab806c802731217df5914e6be4828d9e267d78f8.tar.gz
+contrib/bs-thread-pool|contrib_bs-thread-pool-097aa718f25d44315cadb80b407144ad455ee4f9.tar.gz
+contrib/bzip2|contrib_bzip2-bf905ea2251191ff9911ae7ec0cfc35d41f9f7f6.tar.gz
+contrib/c-ares|contrib_c-ares-c7a3138dcfe3bb0eaaf10c0c24c36dc66dc790ab.tar.gz
+contrib/capnproto|contrib_capnproto-7fababf324f50e6a68be9415294ec2a4c3543208.tar.gz
+contrib/cassandra|contrib_cassandra-f4a31e92a25c34c02c7291ff97c7813bc83b0e09.tar.gz
+contrib/cccl|contrib_cccl-9d65c77f9763cfec20452e4071128d3f0bd2625b.tar.gz
+contrib/cctz|contrib_cctz-fa5fe114a87a34c055853adf54dde305979acea0.tar.gz
+contrib/chdig|contrib_chdig-a28e1072f6e2aeb98116ae6f6ecda06d57e877ff.tar.gz
+contrib/cld2|contrib_cld2-b19c9d5bee6622c1b1efd33264ccca6a76fb0430.tar.gz
+contrib/clickstack|contrib_clickstack-f5232dc36db0f151c6a19a770710fbeebfd9051b.tar.gz
+contrib/corrosion|contrib_corrosion-c4840742d23d1c1a187152e2c5ae65886b9c9007.tar.gz
+contrib/cppkafka|contrib_cppkafka-01ea85530b2c156db2dcadb4117f30e1faf93b09.tar.gz
+contrib/crc32-s390x|contrib_crc32-s390x-30980583bf9ed3fa193abb83a1849705ff457f70.tar.gz
+contrib/crc32-vpmsum|contrib_crc32-vpmsum-452155439389311fc7d143621eaf56a258e02476.tar.gz
+contrib/crc32c|contrib_crc32c-8e39af2c7f8b23d1a0c2a6367b3313149c20b520.tar.gz
+contrib/croaring|contrib_croaring-f2b1a55bcfa49ec986539b05b603e26a3adcc95c.tar.gz
+contrib/cuCollections|contrib_cuCollections-0883368d39296f3bef3a058033141bcc642c5c54.tar.gz
+contrib/cucascade|contrib_cucascade-a37c33b95d032224587dc0f253236b78fdb1d07b.tar.gz
+contrib/cudf|contrib_cudf-ee6d3d2564869c910f8efa93c6668cf0f50ae5bb.tar.gz
+contrib/cyrus-sasl|contrib_cyrus-sasl-e6466edfd638cc5073debe941c53345b18a09512.tar.gz
+contrib/darts-clone|contrib_darts-clone-87b71afd6cf784953e3c08f24c64203397f3b724.tar.gz
+contrib/datasketches-cpp|contrib_datasketches-cpp-4e91777839ba01c43f0da7d049f15478301726d3.tar.gz
+contrib/delta-kernel-rs|contrib_delta-kernel-rs-88ff5a947478215d285783b42aafe6f3d04aca58.tar.gz
+contrib/dlpack|contrib_dlpack-365b823cedb281cd0240ca601aba9b78771f91a3.tar.gz
+contrib/dmlc-core|contrib_dmlc-core-4baa84e627849e675a3f99c92990ef9c39e4269e.tar.gz
+contrib/double-conversion|contrib_double-conversion-9dd6227ee3e29807183e56877f0282aeb40b8b1e.tar.gz
+contrib/fast_float|contrib_fast_float-236eba4d6b11852e16bd5b0166a0319d65496e0a.tar.gz
+contrib/fastops|contrib_fastops-e2fbb015ae99e031eaf0223cd2d5d09ca63cfedb.tar.gz
+contrib/flatbuffers|contrib_flatbuffers-7e163021e59cca4f8e1e35a7c828b5c6b7915953.tar.gz
+contrib/fmtlib|contrib_fmtlib-4d9c4a8580235ba0b22fc6dbf70bcd29eb3ca84c.tar.gz
+contrib/google-benchmark|contrib_google-benchmark-192ef10025eb2c4cdd392bc502f0c852196baa48.tar.gz
+contrib/google-cloud-cpp|contrib_google-cloud-cpp-499787a71646ee5f7d9a845aee79a1b0663c947d.tar.gz
+contrib/google-protobuf|contrib_google-protobuf-f377bfefc5e2cfab68b816903c25b23e091c439d.tar.gz
+contrib/googletest|contrib_googletest-063de7e9578f82b369302001269680b4b1553359.tar.gz
+contrib/grpc|contrib_grpc-68b2fe0b2b1318f18aadee9027e86e8ceaa20af2.tar.gz
+contrib/h3|contrib_h3-d906e00e9210d5a58a8b9ce24b1e276c608230fb.tar.gz
+contrib/heks|contrib_heks-ec14498a6ec2c8f00a3b76cf57e9e26c1ad7362c.tar.gz
+contrib/hive-metastore|contrib_hive-metastore-809a77d435ce218d9b000733f19489c606fc567b.tar.gz
+contrib/icu|contrib_icu-b29faa6d4e46f10d230b93a3c33885e7ec71bd41.tar.gz
+contrib/icudata|contrib_icudata-e3ae5bcb2b24f17cd9336c4f1b25f36ed636d839.tar.gz
+contrib/idna|contrib_idna-262e46f3865975151683f0f60d3d6228cbe9dcb5.tar.gz
+contrib/ipcrypt2|contrib_ipcrypt2-07fd2e1ef3bf6e7d689b6d1c46ff48f67df20888.tar.gz
+contrib/isa-l|contrib_isa-l-9f2b68f05752097f0f16632fc4a9a86950831efd.tar.gz
+contrib/jemalloc|contrib_jemalloc-5f864d8bd4c4fa7a99cb47c374d5c6465a160578.tar.gz
+contrib/jwt-cpp|contrib_jwt-cpp-b0ea29a58fc852a67d4e896d266880c2c63b0c4c.tar.gz
+contrib/krb5|contrib_krb5-857c2d1edd7a4218b84594768587aa53fd63da9e.tar.gz
+contrib/kvikio|contrib_kvikio-5a77056e8fd91affe2cee1c5a395f7e3edffd9af.tar.gz
+contrib/lemmagen-c|contrib_lemmagen-c-59537bdcf57bbed17913292cb4502d15657231f1.tar.gz
+contrib/libarchive|contrib_libarchive-27cbc7827172698143e440801fc0ba39ccb4f1f5.tar.gz
+contrib/libbcrypt|contrib_libbcrypt-8aa32ad94ebe06b76853b0767c910c9fbf7ccef4.tar.gz
+contrib/libcotp|contrib_libcotp-2ffa6281ff4219636354df08b12c1a5aadd12ab4.tar.gz
+contrib/libcpuid|contrib_libcpuid-7ac123e3c13013ff6cd2d8c4ec1881177d71357f.tar.gz
+contrib/libdeflate|contrib_libdeflate-65d215e89ba0cd536f6585834cf507d816cb1a2f.tar.gz
+contrib/libdivide|contrib_libdivide-ea0fb1ad79a116cd561595c930bcaf33147b3e6c.tar.gz
+contrib/libfiu|contrib_libfiu-74bc382193df83d829f9e5b99d7f17a841c5cf74.tar.gz
+contrib/libgsasl|contrib_libgsasl-2d16b4e0d9435bec4546875ef07d36383bb993a5.tar.gz
+contrib/libhdfs3|contrib_libhdfs3-28a9868bc15749d899669e117e0c6eb9f5350923.tar.gz
+contrib/libpqxx|contrib_libpqxx-24a31c3f3a9317131b1326c7b87f42053a5f4489.tar.gz
+contrib/libprotobuf-mutator|contrib_libprotobuf-mutator-dc4ced337a9fb4047e2dc727268fbac55ca82f73.tar.gz
+contrib/librdkafka|contrib_librdkafka-c58ce6331fb871bfb4b15758cfd3283dd0a512fd.tar.gz
+contrib/librseq|contrib_librseq-2ca6d3775a750b180b5c82b999aa5b46f3fea1a7.tar.gz
+contrib/librtcx|contrib_librtcx-a9f63f8cdd4b0b41a2d88a9f705576a61b4222ec.tar.gz
+contrib/libssh|contrib_libssh-c0083428b0c7f97f7b6a9c212d630c49b72a2d7a.tar.gz
+contrib/libstemmer_c|contrib_libstemmer_c-e138ee768ef8935d1957769e73850ca8c795efde.tar.gz
+contrib/libucontext|contrib_libucontext-49e671dd52ff6791295d8161ad3b6da7dc5f6f9d.tar.gz
+contrib/liburing|contrib_liburing-d41bf9220ec39277ff235379e9089d9e0fd6c2a5.tar.gz
+contrib/libuv|contrib_libuv-2804fb04ea7e97eae3999ff323371549d13ecd58.tar.gz
+contrib/libxml2|contrib_libxml2-96498992efa48d52b0e8b83058bd88dbdaf153c1.tar.gz
+contrib/llvm-project|contrib_llvm-project-86b7fe802669a4513da4931d909c36f4728729b9.tar.gz
+contrib/lz4|contrib_lz4-ebb370ca83af193212df4dcbadcc5d87bc0de2f0.tar.gz
+contrib/magic_enum|contrib_magic_enum-1384769c66bd16ec9bb1353f45fe8ec8ccc12dbd.tar.gz
+contrib/mapbox-geometry|contrib_mapbox-geometry-12ac5412bf85571852ad1cd7c30456faef8d6464.tar.gz
+contrib/mariadb-connector-c|contrib_mariadb-connector-c-b3c09ab333c2ef9277291e721871a2bafca6e8bf.tar.gz
+contrib/miniselect|contrib_miniselect-44d09dcb4dc2583e36f14602020fe8c58ff69129.tar.gz
+contrib/minizip-ng|contrib_minizip-ng-7b2387161c542fa9f427352dcdef76097d0d692b.tar.gz
+contrib/mongo-c-driver|contrib_mongo-c-driver-781854a79e47b4b4636d222c8d1fc4ff265128b4.tar.gz
+contrib/mongo-cxx-driver|contrib_mongo-cxx-driver-fa9ee6ed008e84b9562a7a55d70681de8a6bc1c6.tar.gz
+contrib/morton-nd|contrib_morton-nd-3795491a4aa3cdc916c8583094683f0d68df5bc0.tar.gz
+contrib/msgpack-c|contrib_msgpack-c-6b0d778ae059cfb77e26f2a011e99b17a8563c23.tar.gz
+contrib/musl|contrib_musl-ceb269596b20528273116fe1eefa488f83221ff8.tar.gz
+contrib/nanoarrow|contrib_nanoarrow-a579fbf5d192e85b6249935e117de7d02a6dc4e9.tar.gz
+contrib/nats-io|contrib_nats-io-b88704dfeb55e0f1dee165b9c1daccb90d5816d4.tar.gz
+contrib/nlohmann-json|contrib_nlohmann-json-4438a2a0cda77bf4cd74652423e03363e003a0cc.tar.gz
+contrib/nlp-data|contrib_nlp-data-5591f91f5e748cba8fb9ef81564176feae774853.tar.gz
+contrib/nvtx|contrib_nvtx-69c9949150ac1c310758a304082228a36d5e4758.tar.gz
+contrib/openldap|contrib_openldap-a81b431bfc28f994a7ff8ea37f1e1c087436a56d.tar.gz
+contrib/openssl|contrib_openssl-e20d8f40abcba2d733450a5c426490246f636368.tar.gz
+contrib/orc|contrib_orc-21955610d9776dd74a36d52f30ce95db3a5b2ec2.tar.gz
+contrib/parquet-testing|contrib_parquet-testing-56653c437c8092f704a092d0d1d4e600124cd49f.tar.gz
+contrib/pcodec|contrib_pcodec-35424f0fc3aa61328940774c1b915e1356092a5a.tar.gz
+contrib/pocketfft|contrib_pocketfft-f4c1aa8aa9ce79ad39e80f2c9c41b92ead90fda3.tar.gz
+contrib/postgres|contrib_postgres-c7649becd213231466df7e679154e8ac0f744788.tar.gz
+contrib/rapidjson|contrib_rapidjson-04dc6714905247b4529310e0cf73a03a3b8148df.tar.gz
+contrib/rapids-logger|contrib_rapids-logger-1124de618517654cce3636d69d022ee76e9df4b0.tar.gz
+contrib/re2|contrib_re2-1f24555c97150767d65aa77fde8ddd029d2bb97c.tar.gz
+contrib/replxx|contrib_replxx-191e04e43b1ed72289adfe7d2b3fd59b4fb4e78b.tar.gz
+contrib/rmm|contrib_rmm-42d059f127b4a2aef21367930a0491de3a01bfc7.tar.gz
+contrib/rocksdb|contrib_rocksdb-7d4d9327af02f4d3ac0a028817d11e4a8a0cce90.tar.gz
+contrib/rust_vendor|contrib_rust_vendor-1e3f50523beac7359194d52665e013b155f1ec94.tar.gz
+contrib/s2geometry|contrib_s2geometry-5409e159ec6e0334022395ed33ed24e60c69b6ae.tar.gz
+contrib/silk|contrib_silk-78aab9d603d43247fa8f05f86c34ecdfe2ab4095.tar.gz
+contrib/simdcomp|contrib_simdcomp-009c67807670d16f8984c0534aef0e630e5465a4.tar.gz
+contrib/simdjson|contrib_simdjson-47b97cc5dcfbf0caac51f0e5bbf7709484a041d8.tar.gz
+contrib/simdutf|contrib_simdutf-fdca8627a15f3772921b2304ef927bd65728bbfa.tar.gz
+contrib/snappy|contrib_snappy-ce10ba11ed531da1a7df911924f45ae14f13c8b0.tar.gz
+contrib/sparsehash-c11|contrib_sparsehash-c11-edd6f1180156e76facc1c0449da245208ab39503.tar.gz
+contrib/spdlog|contrib_spdlog-27cb4c76708608465c413f6d0e6b8d99a4d84302.tar.gz
+contrib/sqids-cpp|contrib_sqids-cpp-a471f53672e98d49223f598528a533b07b085c61.tar.gz
+contrib/sql-console|contrib_sql-console-e8dadc688cc690adc09a46d384bb70f0c53b19f7.tar.gz
+contrib/sqlite-amalgamation|contrib_sqlite-amalgamation-23c7b76929611997c5f0315b3149372b1bee1d41.tar.gz
+contrib/substrait|contrib_substrait-de9e6328f4f94abc0809977f57dfde7262a7258b.tar.gz
+contrib/sysroot|contrib_sysroot-6dd29c222896e54de24e7af1b191c92e4cf2e229.tar.gz
+contrib/sz3|contrib_sz3-f36e8b064fdde4bac260988ea459786964bbb492.tar.gz
+contrib/thrift|contrib_thrift-26bf3f0c3cade6f2c9fac82d4962751466282c23.tar.gz
+contrib/ulid-c|contrib_ulid-c-c433b6783cf918b8f996dacd014cb2b68c7de419.tar.gz
+contrib/usearch|contrib_usearch-6bd13d4c69a1baef1f668e652c3ca26028970f12.tar.gz
+contrib/vectorscan|contrib_vectorscan-4f863adbc2aa1129d473483d1a70134da07b5074.tar.gz
+contrib/wagyu|contrib_wagyu-22ce25812c98e42dc277805941ab8e6577ba729b.tar.gz
+contrib/wasmtime|contrib_wasmtime-561b224fd0589a02fc9e7bcef1aeb70d886d33c0.tar.gz
+contrib/wordnet-blast|contrib_wordnet-blast-1d16ac28036e19fe8da7ba72c16a307fbdf8c87e.tar.gz
+contrib/wyhash|contrib_wyhash-991aa3dab624e50b066f7a02ccc9f6935cc740ec.tar.gz
+contrib/xgboost|contrib_xgboost-665fa8355e455a3b9fc7acbfd68e6788337a45f8.tar.gz
+contrib/xsimd|contrib_xsimd-f795779ccfad12832ea47bfc02d02a65fd7f3576.tar.gz
+contrib/xxHash|contrib_xxHash-c87183a77d67f7d37e3d2d1b7eaac5e7c695e4f0.tar.gz
+contrib/xz|contrib_xz-d3e650e63c110e830fd5391e7f8b45df0b91d3da.tar.gz
+contrib/yaml-cpp|contrib_yaml-cpp-acf418672e8aae00fa0de9ada9753e9001a6d57e.tar.gz
+contrib/zlib-ng|contrib_zlib-ng-a2fbeffdc30a8b0ce6d54ee31208e2688eac4c9f.tar.gz
+contrib/zmij|contrib_zmij-b490231ab0cd976b8e3a6e3b442c7eeee22fe05d.tar.gz
+contrib/zstd|contrib_zstd-5b3e9e8fd2779260101a07e6cc7b34fd8764617f.tar.gz
+contrib/zxc|contrib_zxc-e568d1967309fd5d160f45f2fdabcbff6ab3f058.tar.gz
+EOF_SUBMK
+}
+
+# ClickHouse hard-requires Clang >= 21 + lld (cmake/tools.cmake) and rejects
+# the cross gcc that the cmake build-style uses by default, so override
+# do_configure with the style's logic but the upstream cross-musl toolchain.
+do_configure() {
+	local cmake_args=
+	[ ! -d ${cmake_builddir:=build} ] && mkdir -p ${cmake_builddir}
+	cd ${cmake_builddir}
+
+	if [ -z "$CHROOT_READY" ]; then
+		cat >bootstrap.cmake <<_EOF
+SET(CMAKE_SYSTEM_NAME Linux)
+SET(CMAKE_SYSTEM_VERSION 1)
+
+SET(CMAKE_C_COMPILER   clang)
+SET(CMAKE_CXX_COMPILER clang++)
+
+SET(CMAKE_FIND_ROOT_PATH  "${XBPS_MASTERDIR}/usr;${XBPS_MASTERDIR}")
+
+SET(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+SET(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+_EOF
+		configure_args+=" -DCMAKE_TOOLCHAIN_FILE=bootstrap.cmake"
+	elif [ "$CROSS_BUILD" ]; then
+		# Upstream's fully-static musl toolchain file; it brings the vendored
+		# musl/libcxx/compiler-rt wiring and kernel headers from contrib/sysroot,
+		# and does not override the compilers (CC/CXX still rule).
+		cmake_args+=" -DCMAKE_TOOLCHAIN_FILE=${wrksrc}/cmake/linux/toolchain-aarch64-musl.cmake"
+	fi
+	cmake_args+=" -DCMAKE_INSTALL_PREFIX:PATH=/usr"
+	cmake_args+=" -DCMAKE_BUILD_TYPE=None"
+	cmake_args+=" -DCMAKE_INSTALL_LIBDIR:PATH=lib${XBPS_TARGET_WORDSIZE}"
+	cmake_args+=" -DCMAKE_INSTALL_SYSCONFDIR:PATH=/etc"
+	cmake_args+=" -DCMAKE_INSTALL_SBINDIR:PATH=bin"
+
+	export CMAKE_GENERATOR="${CMAKE_GENERATOR:-Ninja}"
+	# Remove -pipe: https://gitlab.kitware.com/cmake/cmake/issues/19590
+	# With the upstream musl toolchain, Void's sysroot -I/-L must go: the
+	# vendored musl headers must win over the system ones.
+	# -fuse-ld=lld: clang would otherwise pick up the cross binutils' GNU ld
+	# (aarch64-linux-musl-ld) from PATH, which lacks gcc's internal paths.
+	# --gcc-toolchain=/usr: Void's cross gcc installs its internal files
+	# (crtbeginS.o, libgcc.a) under the masterdir's /usr/lib/gcc, not inside
+	# the sysroot, so clang cannot find them without a hint.
+	CC=clang CXX=clang++ \
+		CFLAGS="-DNDEBUG $(printf '%s' "$CFLAGS" | sed 's/ -I\/usr\/aarch64-linux-musl\/usr\/include//g; s/^ -I\/usr\/aarch64-linux-musl\/usr\/include//') ${CFLAGS/ -pipe /}" \
+		CXXFLAGS="-DNDEBUG $(printf '%s' "$CXXFLAGS" | sed 's/ -I\/usr\/aarch64-linux-musl\/usr\/include//g; s/^ -I\/usr\/aarch64-linux-musl\/usr\/include//') ${CXXFLAGS/ -pipe /}" \
+		LDFLAGS="$(printf '%s' "$LDFLAGS" | sed 's/ -L\/usr\/aarch64-linux-musl\/usr\/lib//g; s/^ -L\/usr\/aarch64-linux-musl\/usr\/lib//') -fuse-ld=lld --gcc-toolchain=/usr" \
+		cmake ${XBPS_VERBOSE--Wno-dev} ${cmake_args} ${configure_args} \
+		-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+		${LIBS:+-DCMAKE_C_STANDARD_LIBRARIES="$LIBS"} \
+		${LIBS:+-DCMAKE_CXX_STANDARD_LIBRARIES="$LIBS"} \
+		${wrksrc}/${build_wrksrc}
+
+	# NOTE: we deliberately do NOT rewrite -isystem to -I (the build style
+	# does that for other packages): ClickHouse relies on them being system
+	# headers even with -Weverything -Werror. Taking that away breaks
+	# builds, so we don't do it.
+}
+
+# clickhouse-server and clickhouse-keeper run as the _clickhouse user.
+system_accounts="_clickhouse"
+_clickhouse_homedir="/var/lib/clickhouse"
+_clickhouse_descr="ClickHouse server user"
+make_dirs="
+ /var/lib/clickhouse 0750 _clickhouse _clickhouse"
+
+post_install() {
+	vlicense LICENSE
+
+	# clickhouse-server runs in the foreground by default
+	# (application.runAsDaemon=false in BaseDaemon.cpp), which is what
+	# the runit service expects.
+	vmkdir etc/clickhouse-server
+	vinstall programs/server/config.xml 640 etc/clickhouse-server
+	vinstall programs/server/users.xml 640 etc/clickhouse-server
+	vsv clickhouse-server
+
+	vmkdir etc/clickhouse-keeper
+	vinstall programs/keeper/keeper_config.xml 640 etc/clickhouse-keeper
+	vsv clickhouse-keeper
+}
+
+clickhouse-client_package() {
+	short_desc+=" - client tools"
+	depends="${sourcepkg}>=${version}_${revision}"
+	pkg_install() {
+		vmove usr/bin/clickhouse-client
+		# Upstream does not install man pages in non-doc builds.
+		# vmove usr/share/man/man1/clickhouse-client.1
+	}
+}
+
+clickhouse-keeper_package() {
+	short_desc+=" - keeper service"
+	depends="${sourcepkg}>=${version}_${revision}"
+	conf_files="/etc/clickhouse-keeper/keeper_config.xml"
+	make_dirs="
+	 /var/lib/clickhouse-keeper 0750 _clickhouse _clickhouse
+	 /var/log/clickhouse-keeper 0750 _clickhouse _clickhouse"
+	pkg_install() {
+		vmove usr/bin/clickhouse-keeper
+		vmove etc/clickhouse-keeper
+		vmove etc/sv/clickhouse-keeper
+		# configs are installed group-readable only; make them readable by
+		# the _clickhouse account that runs the service
+		chmod 644 "${PKGDESTDIR}/etc/clickhouse-keeper/keeper_config.xml"
+	}
+}
+
+clickhouse-server_package() {
+	short_desc+=" - full server daemon"
+	depends="${sourcepkg}>=${version}_${revision}"
+	conf_files="/etc/clickhouse-server/config.xml /etc/clickhouse-server/users.xml"
+	make_dirs="
+	 /var/log/clickhouse-server 0750 _clickhouse _clickhouse"
+	pkg_install() {
+		vmove usr/bin/clickhouse-server
+		vmove etc/clickhouse-server
+		vmove etc/sv/clickhouse-server
+		# configs are installed group-readable only; make them readable by
+		# the _clickhouse account that runs the service
+		chmod 644 "${PKGDESTDIR}/etc/clickhouse-server/config.xml" \
+			"${PKGDESTDIR}/etc/clickhouse-server/users.xml"
+	}
+}

@@ -1,0 +1,3 @@
+#!/bin/sh
+[ ! -d /run/svlogdir ] && mkdir -p /run/svlogdir
+exec vlogger -t clickhouse-server -p daemon

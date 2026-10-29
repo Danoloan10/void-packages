@@ -6,5 +6,5 @@
 hook() {
 	[ -z "$CROSS_BUILD" ] && return
 	vmkdir usr/${XBPS_CROSS_TRIPLET}
-	ln -sf ".." "${PKGDESTDIR}/usr/${XBPS_CROSS_TRIPLET}/usr"
+	ln -sfn ".." "${PKGDESTDIR}/usr/${XBPS_CROSS_TRIPLET}/usr"
 }

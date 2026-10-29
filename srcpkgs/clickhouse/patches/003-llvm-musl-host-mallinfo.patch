@@ -1,0 +1,62 @@
+Void: make the native llvm-min-tblgen / llvm-tblgen sub-build runnable in
+the distribution build environment (Void masterdir = musl), two problems in
+the same ExternalProject:
+
+- Its own CMake cache survives main-build reconfigures; a stale cache
+  leaks the cross environment's CFLAGS/CXXFLAGS (e.g. -march=armv8-a from
+  an aarch64 build) into the host-side sub-build and breaks the whole
+  main configure. Wipe its build/prefix directories before configuring.
+- Without explicit settings it inherits the cross gcc wrappers
+  (aarch64-linux-musl-*) from the environment which cannot produce host
+  executables, and PreLoad.cmake silently loads upstream's vendored
+  glibc toolchain (cmake/linux/toolchain-x86_64.cmake) linking the
+  tablegen binaries against glibc so they fail to run inside the musl
+  masterdir. Force the masterdir's clang/clang++, reset the flag
+  variables, pin --target=x86_64-linux-musl, and pass
+  DISABLE_HERMETIC_BUILD=ON.
+
+diff --git a/contrib/llvm-project-cmake/CMakeLists.txt b/contrib/llvm-project-cmake/CMakeLists.txt
+index 710911b37..08113966d 100644
+@@ -320,6 +320,14 @@
+ 
+     set(NATIVE_TBLGEN_BUILD_DIR "${CMAKE_CURRENT_BINARY_DIR}/native-tblgen")
+ 
++    # Void: always configure this ExternalProject from scratch between
++    # main-build reconfigures. Its build directory keeps a CMake cache, and a
++    # stale cache leaks the cross environment's CFLAGS/CXXFLAGS (e.g.
++    # -march=armv8-a from an aarch64 build) into the host-side sub-build,
++    # producing a broken ninja that fails the whole main configure.
++    file(REMOVE_RECURSE "${NATIVE_TBLGEN_BUILD_DIR}")
++    file(REMOVE_RECURSE "${CMAKE_CURRENT_BINARY_DIR}/native-tblgen-build-prefix")
++
+     # Build native tablegen tools using ExternalProject
+     # This runs a separate CMake configuration WITHOUT the target toolchain,
+     # so it builds for the host system.
+@@ -335,7 +343,26 @@
+             -DLLVM_SOURCE_DIR=${LLVM_SOURCE_DIR}
+             -DLLVM_NATIVE_OUTPUT_DIR=${NATIVE_TBLGEN_BUILD_DIR}
+             -DCMAKE_BUILD_TYPE=Release
+-        # Do NOT pass toolchain file or compilers - let CMake find host compilers
++            # Void: force the masterdir's own (musl x86_64) compilers: without
++            # explicit compilers this ExternalProject inherits the cross gcc
++            # wrappers exposed by the build environment (aarch64-linux-musl-*),
++            # which cannot produce host executables. The flag variables are
++            # reset too, so the cross CFLAGS/CXXFLAGS/LDFLAGS do not seed this
++            # sub-build's cache. clang is required (upstream rejects GCC).
++            -DCMAKE_C_COMPILER=clang
++            -DCMAKE_CXX_COMPILER=clang++
++            -DCMAKE_ASM_COMPILER=clang
++            # Void's clang defaults to the musl x86_64 host triple already;
++            # pin it explicitly because of the flag resets below.
++            "-DCMAKE_C_FLAGS=--target=x86_64-linux-musl"
++            "-DCMAKE_CXX_FLAGS=--target=x86_64-linux-musl"
++            "-DCMAKE_EXE_LINKER_FLAGS=--target=x86_64-linux-musl"
++            # Void: without DISABLE_HERMETIC_BUILD=ON the PreLoad.cmake of
++            # this sub-build silently loads upstream's vendored glibc
++            # toolchain (cmake/linux/toolchain-x86_64.cmake), linking the
++            # tablegen binaries against the vendored glibc sysroot: they
++            # would not run inside the musl masterdir.
++            -DDISABLE_HERMETIC_BUILD=ON
+         BUILD_ALWAYS OFF
+         INSTALL_COMMAND ""
+         CMAKE_GENERATOR "${CMAKE_GENERATOR}"

@@ -1,0 +1,37 @@
+diff --git a/contrib/llvm-project-cmake/native-tblgen/CMakeLists.txt b/contrib/llvm-project-cmake/native-tblgen/CMakeLists.txt
+index ee6df3594..1ba4fd69b 100644
+--- a/contrib/llvm-project-cmake/native-tblgen/CMakeLists.txt
++++ b/contrib/llvm-project-cmake/native-tblgen/CMakeLists.txt
+@@ -76,17 +76,26 @@ else()
+     set(LLVM_SHLIB_EXT ".so")
+ endif()
+ 
+-# mallinfo is only available on Linux with glibc
+-if (CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
++# Distribution builds can run this native sub-build on a musl host (e.g.
++# Void Linux); musl only declares mallinfo with _GNU_SOURCE and may lack
++# execinfo.h, so real compile checks settle it instead of assuming the
++# host libc.
++include(CheckCXXSourceCompiles)
++check_cxx_source_compiles("
++    #include <malloc.h>
++    int main() { struct mallinfo mi; mi = mallinfo(); (void)mi; return 0; }
++" HAVE_MALLINFO_WORKS)
++if (CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux" AND HAVE_MALLINFO_WORKS)
+     set(HAVE_MALLINFO_DEFINE "#define HAVE_MALLINFO 1")
+ else()
+     set(HAVE_MALLINFO_DEFINE "/* #undef HAVE_MALLINFO */")
+ endif()
+ 
+-# backtrace/execinfo.h - available on glibc Linux and macOS.
+-# FreeBSD requires a separate libexecinfo which we don't link here,
+-# so we leave backtrace disabled there.
+-if (CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
++check_cxx_source_compiles("
++    #include <execinfo.h>
++    int main() { void* b[1]; (void)backtrace(b, 1); return 0; }
++" HAVE_BACKTRACE_WORKS)
++if (HAVE_BACKTRACE_WORKS)
+     set(HAVE_BACKTRACE_DEFINE "#define HAVE_BACKTRACE 1")
+     set(BACKTRACE_HEADER_DEFINE "#define BACKTRACE_HEADER <execinfo.h>")
+ else()

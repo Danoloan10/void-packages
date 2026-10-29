@@ -1,0 +1,6 @@
+#!/bin/sh
+exec 2>&1
+[ -r ./conf ] && . ./conf
+
+exec chpst -u _clickhouse:_clickhouse /usr/bin/clickhouse-keeper \
+	--config-file=/etc/clickhouse-keeper/keeper_config.xml ${OPTS:-} 2>&1
